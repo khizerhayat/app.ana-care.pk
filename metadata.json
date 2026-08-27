@@ -1,0 +1,6 @@
+{
+  "name": "ANA Care",
+  "description": "Secure Patient Portal for vital signs, medication management, daily activities tracking, PDF report export, lab results, appointments, encrypted doctor messaging, and multi-user caregiver access.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
