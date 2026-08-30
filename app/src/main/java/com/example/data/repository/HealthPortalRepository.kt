@@ -3,9 +3,11 @@ package com.example.data.repository
 import com.example.data.local.AppDatabase
 import com.example.data.local.entities.AppConfigEntity
 import com.example.data.local.entities.AppointmentEntity
+import com.example.data.local.entities.AuditLogEntity
 import com.example.data.local.entities.DailyActivityEntity
 import com.example.data.local.entities.EncryptedMessageEntity
 import com.example.data.local.entities.LabResultEntity
+import com.example.data.local.entities.MedicalGalleryEntity
 import com.example.data.local.entities.MedicationAdministrationLogEntity
 import com.example.data.local.entities.MedicationEntity
 import com.example.data.local.entities.PatientAlertNoteEntity
@@ -31,6 +33,8 @@ class HealthPortalRepository(private val database: AppDatabase) {
     private val encryptedMessageDao = database.encryptedMessageDao()
     private val patientAlertNoteDao = database.patientAlertNoteDao()
     private val appConfigDao = database.appConfigDao()
+    private val medicalGalleryDao = database.medicalGalleryDao()
+    private val auditLogDao = database.auditLogDao()
 
     // Flow Getters
     val allAccounts: Flow<List<UserAccountEntity>> = userAccountDao.getAllAccounts()
@@ -38,9 +42,58 @@ class HealthPortalRepository(private val database: AppDatabase) {
     val appConfig: Flow<AppConfigEntity?> = appConfigDao.getAppConfigFlow()
     val allAlertNotes: Flow<List<PatientAlertNoteEntity>> = patientAlertNoteDao.getAllAlerts()
     val allVitals: Flow<List<VitalSignEntity>> = vitalSignDao.getAllVitals()
+    val allGallery: Flow<List<MedicalGalleryEntity>> = medicalGalleryDao.getAllGallery()
+    val allAuditLogs: Flow<List<AuditLogEntity>> = auditLogDao.getAllLogs()
+
+    fun getAuditLogsForUser(userId: String): Flow<List<AuditLogEntity>> =
+        if (userId == "ALL") auditLogDao.getAllLogs() else auditLogDao.getLogsForUser(userId)
+
+    suspend fun logUserAction(
+        userId: String,
+        userName: String,
+        userRole: String,
+        actionType: String,
+        category: String,
+        description: String,
+        details: String = "",
+        severity: String = "INFO",
+        ipAddress: String = "127.0.0.1 (Local Session)"
+    ): Long {
+        val now = System.currentTimeMillis()
+        val formatted = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date(now))
+        val entry = AuditLogEntity(
+            timestamp = now,
+            formattedTimestamp = formatted,
+            userId = userId,
+            userName = userName,
+            userRole = userRole,
+            actionType = actionType,
+            category = category,
+            description = description,
+            details = details,
+            severity = severity,
+            ipAddress = ipAddress
+        )
+        return auditLogDao.insertLog(entry)
+    }
+
+    suspend fun clearAuditLogs() {
+        auditLogDao.clearAllLogs()
+    }
+
+    suspend fun getAllAuditLogsDirect(): List<AuditLogEntity> {
+        return auditLogDao.getAllLogsDirect()
+    }
+
+    suspend fun getAuditLogsForUserDirect(userId: String): List<AuditLogEntity> {
+        return if (userId == "ALL") auditLogDao.getAllLogsDirect() else auditLogDao.getLogsForUserDirect(userId)
+    }
 
     fun getVitalsForPatient(patientId: String): Flow<List<VitalSignEntity>> =
         vitalSignDao.getVitalsForPatient(patientId)
+
+    fun getGalleryForPatient(patientId: String): Flow<List<MedicalGalleryEntity>> =
+        medicalGalleryDao.getGalleryForPatient(patientId)
 
     fun getMedicationsForPatient(patientId: String): Flow<List<MedicationEntity>> =
         medicationDao.getMedicationsForPatient(patientId)
@@ -304,6 +357,36 @@ class HealthPortalRepository(private val database: AppDatabase) {
         dailyActivityDao.deleteActivityById(id)
     }
 
+    // Medical Gallery Operations
+    suspend fun addGalleryImage(
+        patientId: String,
+        title: String,
+        category: String,
+        imageUri: String,
+        notes: String,
+        loggedByRole: String,
+        loggedByName: String
+    ): Long {
+        val timestamp = System.currentTimeMillis()
+        val formattedDate = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date(timestamp))
+        val entity = MedicalGalleryEntity(
+            patientId = patientId,
+            timestamp = timestamp,
+            title = title,
+            category = category,
+            imageUri = imageUri,
+            notes = notes,
+            loggedByRole = loggedByRole,
+            loggedByName = loggedByName,
+            formattedDate = formattedDate
+        )
+        return medicalGalleryDao.insertImage(entity)
+    }
+
+    suspend fun deleteGalleryImage(id: Long) {
+        medicalGalleryDao.deleteImageById(id)
+    }
+
     // Appointments Operations
     suspend fun scheduleAppointment(
         patientId: String,
@@ -378,6 +461,14 @@ class HealthPortalRepository(private val database: AppDatabase) {
     // Lab Results Operations
     suspend fun addLabResult(result: LabResultEntity): Long {
         return labResultDao.insertLabResult(result)
+    }
+
+    suspend fun updateLabResult(result: LabResultEntity) {
+        labResultDao.insertLabResult(result)
+    }
+
+    suspend fun deleteLabResult(id: Long) {
+        labResultDao.deleteLabResultById(id)
     }
 
     fun getCaregiversForPatient(patientId: String): Flow<List<UserAccountEntity>> =
@@ -958,6 +1049,59 @@ class HealthPortalRepository(private val database: AppDatabase) {
                 )
             )
             initialAlertNotes.forEach { patientAlertNoteDao.insertAlert(it) }
+
+            // Seed Initial Clinical & Medical Gallery Items
+            val initialGallery = listOf(
+                MedicalGalleryEntity(
+                    patientId = "21001001",
+                    timestamp = now - 1 * day - 2 * hour,
+                    title = "Lisinopril 10mg Prescription Bottle Label",
+                    category = "Prescription / Rx",
+                    imageUri = "sample_rx_label",
+                    notes = "Pharmacy label scanned by caregiver verifying 30-day refill quantity and dosing instructions.",
+                    loggedByRole = "CAREGIVER",
+                    loggedByName = "James Vance (Caregiver)",
+                    formattedDate = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date(now - 1 * day - 2 * hour))
+                ),
+                MedicalGalleryEntity(
+                    patientId = "21001001",
+                    timestamp = now - 3 * day,
+                    title = "Post-Op Knee Dressing Healing Progress",
+                    category = "Wound & Clinical Photo",
+                    imageUri = "sample_wound_healing",
+                    notes = "Incision clean, dry, and intact with no erythema or exudate observed during morning dressing change.",
+                    loggedByRole = "DOCTOR",
+                    loggedByName = "Dr. Sarah Jenkins, MD",
+                    formattedDate = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date(now - 3 * day))
+                ),
+                MedicalGalleryEntity(
+                    patientId = "21001001",
+                    timestamp = now - 5 * day,
+                    title = "Diagnostic Lipid & Metabolic Panel Printout",
+                    category = "Lab & Diagnostic Report",
+                    imageUri = "sample_lab_scan",
+                    notes = "Official diagnostic laboratory scan from regional testing center for review.",
+                    loggedByRole = "PATIENT",
+                    loggedByName = "Eleanor Vance (Patient)",
+                    formattedDate = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date(now - 5 * day))
+                ),
+                MedicalGalleryEntity(
+                    patientId = "21001001",
+                    timestamp = now - 6 * day,
+                    title = "Therapy Resistance Band Exercise Form",
+                    category = "Physical Therapy / Mobility",
+                    imageUri = "sample_therapy_form",
+                    notes = "Mobility posture captured during home physical therapy session.",
+                    loggedByRole = "CAREGIVER",
+                    loggedByName = "James Vance (Caregiver)",
+                    formattedDate = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date(now - 6 * day))
+                )
+            )
+            medicalGalleryDao.insertAll(initialGallery)
+
+            // Seed Initial Audit Logs
+            val initialAuditLogs = DummyDataSeeder.generateInitialAuditLogs(now)
+            auditLogDao.insertAll(initialAuditLogs)
         }
     }
 

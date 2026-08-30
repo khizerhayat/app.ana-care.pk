@@ -1,5 +1,6 @@
 package com.example.ui.screens.subtabs
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FitnessCenter
@@ -77,6 +79,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -84,6 +87,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entities.MedicationEntity
+import com.example.ui.components.MedicalGallerySection
 import com.example.ui.theme.HealthCriticalRed
 import com.example.ui.theme.HealthNormalGreen
 import com.example.ui.theme.HealthWarningAmber
@@ -103,6 +107,9 @@ fun AddRecordsScreen(
 ) {
     val selectedSubTab by viewModel.addRecordsSubTab.collectAsState()
     val scrollState = rememberScrollState()
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Column(
         modifier = modifier
@@ -130,7 +137,7 @@ fun AddRecordsScreen(
                 Tab(
                     selected = selectedSubTab == 0,
                     onClick = { viewModel.setAddRecordsSubTab(0) },
-                    text = { Text("Vital Signs", fontSize = 12.5.sp, fontWeight = if (selectedSubTab == 0) FontWeight.Bold else FontWeight.Normal) },
+                    text = if (isLandscape) { { Text("Vital Signs", fontSize = 12.5.sp, fontWeight = if (selectedSubTab == 0) FontWeight.Bold else FontWeight.Normal) } } else null,
                     icon = { Icon(Icons.Default.Favorite, contentDescription = "Vitals Tab", modifier = Modifier.size(18.dp)) },
                     selectedContentColor = SkyLight,
                     unselectedContentColor = Color(0xFF94A3B8),
@@ -139,7 +146,7 @@ fun AddRecordsScreen(
                 Tab(
                     selected = selectedSubTab == 1,
                     onClick = { viewModel.setAddRecordsSubTab(1) },
-                    text = { Text("Medications", fontSize = 12.5.sp, fontWeight = if (selectedSubTab == 1) FontWeight.Bold else FontWeight.Normal) },
+                    text = if (isLandscape) { { Text("Medications", fontSize = 12.5.sp, fontWeight = if (selectedSubTab == 1) FontWeight.Bold else FontWeight.Normal) } } else null,
                     icon = { Icon(Icons.Default.Medication, contentDescription = "Medications Tab", modifier = Modifier.size(18.dp)) },
                     selectedContentColor = SkyLight,
                     unselectedContentColor = Color(0xFF94A3B8),
@@ -148,11 +155,20 @@ fun AddRecordsScreen(
                 Tab(
                     selected = selectedSubTab == 2,
                     onClick = { viewModel.setAddRecordsSubTab(2) },
-                    text = { Text("Daily Activities", fontSize = 12.5.sp, fontWeight = if (selectedSubTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                    text = if (isLandscape) { { Text("Daily Activities", fontSize = 12.5.sp, fontWeight = if (selectedSubTab == 2) FontWeight.Bold else FontWeight.Normal) } } else null,
                     icon = { Icon(Icons.Default.FitnessCenter, contentDescription = "Activities Tab", modifier = Modifier.size(18.dp)) },
                     selectedContentColor = SkyLight,
                     unselectedContentColor = Color(0xFF94A3B8),
                     modifier = Modifier.testTag("subtab_add_activities")
+                )
+                Tab(
+                    selected = selectedSubTab == 3,
+                    onClick = { viewModel.setAddRecordsSubTab(3) },
+                    text = if (isLandscape) { { Text("Medical Gallery", fontSize = 12.5.sp, fontWeight = if (selectedSubTab == 3) FontWeight.Bold else FontWeight.Normal) } } else null,
+                    icon = { Icon(Icons.Default.Collections, contentDescription = "Gallery Tab", modifier = Modifier.size(18.dp)) },
+                    selectedContentColor = SkyLight,
+                    unselectedContentColor = Color(0xFF94A3B8),
+                    modifier = Modifier.testTag("subtab_add_gallery")
                 )
             }
         }
@@ -168,6 +184,7 @@ fun AddRecordsScreen(
                 0 -> AddVitalsSubTab(viewModel = viewModel)
                 1 -> AddMedicationsSubTab(viewModel = viewModel)
                 2 -> AddActivitiesSubTab(viewModel = viewModel)
+                3 -> MedicalGallerySection(viewModel = viewModel)
             }
         }
     }
@@ -821,6 +838,9 @@ private fun AddMedicationsSubTab(
 private fun AddActivitiesSubTab(
     viewModel: PortalViewModel
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     val activityTypes = listOf(
         "Walking / Steps" to Icons.Default.DirectionsWalk,
         "Physical Therapy" to Icons.Default.MedicalServices,
@@ -845,242 +865,465 @@ private fun AddActivitiesSubTab(
         "In Pain" to "😣"
     )
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("add_activities_card"),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = "Log Daily Activity & Wellness",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "Track rehabilitation progress, mobility, pain and mood",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Activity Type Selector Chips
-            Text("Select Activity Type", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+    if (isLandscape) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            // Left Column: Activity Logging Form
+            Card(
+                modifier = Modifier
+                    .weight(1.1f)
+                    .testTag("add_activities_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                activityTypes.take(3).forEach { (type, icon) ->
-                    val isSel = selectedType == type
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSel) Color(0xFFE0F2FE) else Color(0xFFF1F5F9),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TealAccent else Color.Transparent),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                selectedType = type
-                                if (type.contains("Walking")) metricValue = "4,200 steps"
-                                if (type.contains("Therapy")) metricValue = "Lower body routine"
-                            }
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(icon, contentDescription = null, tint = if (isSel) TealAccent else Color(0xFF64748B), modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = type.split(" ").first(),
-                                fontSize = 11.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSel) NavyPrimary else Color(0xFF475569)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                activityTypes.drop(3).forEach { (type, icon) ->
-                    val isSel = selectedType == type
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSel) Color(0xFFE0F2FE) else Color(0xFFF1F5F9),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TealAccent else Color.Transparent),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                selectedType = type
-                                if (type.contains("Sleep")) metricValue = "8.0 hours"
-                                if (type.contains("Water")) metricValue = "2,000 mL"
-                                if (type.contains("Diet")) metricValue = "Low sodium meal"
-                            }
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(icon, contentDescription = null, tint = if (isSel) TealAccent else Color(0xFF64748B), modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = type.split(" ").first(),
-                                fontSize = 11.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSel) NavyPrimary else Color(0xFF475569)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Duration & Metric Value
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedTextField(
-                    value = durationMinutes,
-                    onValueChange = { durationMinutes = it },
-                    label = { Text("Duration (mins)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(0.8f).testTag("activity_duration_input")
-                )
-                OutlinedTextField(
-                    value = metricValue,
-                    onValueChange = { metricValue = it },
-                    label = { Text("Measurement / Summary") },
-                    placeholder = { Text("e.g. 5,000 steps, 2.5L water") },
-                    modifier = Modifier.weight(1.2f).testTag("activity_metric_input")
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Pain Score (0-10) Interactive Slider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Pain Level (0 - 10):", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = when {
-                        painScore.toInt() >= 7 -> Color(0xFFFEE2E2)
-                        painScore.toInt() >= 4 -> Color(0xFFFEF3C7)
-                        else -> Color(0xFFD1FAE5)
-                    }
-                ) {
+                Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "${painScore.toInt()} / 10 ${if (painScore.toInt() == 0) "(No Pain)" else if (painScore.toInt() < 4) "(Mild)" else if (painScore.toInt() < 7) "(Moderate)" else "(Severe)"}",
-                        fontSize = 11.sp,
+                        text = "Log Daily Activity & Wellness",
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = when {
-                            painScore.toInt() >= 7 -> HealthCriticalRed
-                            painScore.toInt() >= 4 -> HealthWarningAmber
-                            else -> Color(0xFF065F46)
-                        },
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                }
-            }
+                    Text(
+                        text = "Track rehabilitation progress, mobility, pain and mood",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-            Slider(
-                value = painScore,
-                onValueChange = { painScore = it },
-                valueRange = 0f..10f,
-                steps = 9,
-                colors = SliderDefaults.colors(
-                    thumbColor = TealAccent,
-                    activeTrackColor = TealAccent
-                ),
-                modifier = Modifier.fillMaxWidth().testTag("pain_score_slider")
-            )
+                    Spacer(modifier = Modifier.height(14.dp))
 
-            Spacer(modifier = Modifier.height(10.dp))
+                    // Activity Type Selector Chips
+                    Text("Select Activity Type", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                    Spacer(modifier = Modifier.height(6.dp))
 
-            // Mood Selector
-            Text("How are you feeling today?", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                moods.forEach { (moodName, emoji) ->
-                    val isSel = selectedMood == moodName
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSel) Color(0xFFE0F2FE) else Color(0xFFF8FAFC),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TealAccent else Color(0xFFCBD5E1)),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { selectedMood = moodName }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        activityTypes.take(3).forEach { (type, icon) ->
+                            val isSel = selectedType == type
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) Color(0xFFE0F2FE) else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TealAccent else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        selectedType = type
+                                        if (type.contains("Walking")) metricValue = "4,200 steps"
+                                        if (type.contains("Therapy")) metricValue = "Lower body routine"
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(icon, contentDescription = null, tint = if (isSel) TealAccent else Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = type.split(" ").first(),
+                                        fontSize = 10.5.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSel) NavyPrimary else Color(0xFF475569)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        activityTypes.drop(3).forEach { (type, icon) ->
+                            val isSel = selectedType == type
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) Color(0xFFE0F2FE) else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TealAccent else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        selectedType = type
+                                        if (type.contains("Sleep")) metricValue = "8.0 hours"
+                                        if (type.contains("Water")) metricValue = "2,000 mL"
+                                        if (type.contains("Diet")) metricValue = "Low sodium meal"
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(icon, contentDescription = null, tint = if (isSel) TealAccent else Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = type.split(" ").first(),
+                                        fontSize = 10.5.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSel) NavyPrimary else Color(0xFF475569)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Duration & Metric Value
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = durationMinutes,
+                            onValueChange = { durationMinutes = it },
+                            label = { Text("Duration (mins)", fontSize = 11.5.sp) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(0.8f).testTag("activity_duration_input")
+                        )
+                        OutlinedTextField(
+                            value = metricValue,
+                            onValueChange = { metricValue = it },
+                            label = { Text("Summary / Value", fontSize = 11.5.sp) },
+                            placeholder = { Text("e.g. 5,000 steps") },
+                            modifier = Modifier.weight(1.2f).testTag("activity_metric_input")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Pain Score
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Pain Level:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = when {
+                                painScore.toInt() >= 7 -> Color(0xFFFEE2E2)
+                                painScore.toInt() >= 4 -> Color(0xFFFEF3C7)
+                                else -> Color(0xFFD1FAE5)
+                            }
                         ) {
-                            Text(emoji, fontSize = 18.sp)
                             Text(
-                                text = moodName,
-                                fontSize = 10.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSel) NavyPrimary else Color(0xFF64748B)
+                                text = "${painScore.toInt()}/10",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = when {
+                                    painScore.toInt() >= 7 -> HealthCriticalRed
+                                    painScore.toInt() >= 4 -> HealthWarningAmber
+                                    else -> Color(0xFF065F46)
+                                },
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
+                    }
+
+                    Slider(
+                        value = painScore,
+                        onValueChange = { painScore = it },
+                        valueRange = 0f..10f,
+                        steps = 9,
+                        colors = SliderDefaults.colors(thumbColor = TealAccent, activeTrackColor = TealAccent),
+                        modifier = Modifier.fillMaxWidth().testTag("pain_score_slider")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Activity Notes
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text("Activity / Exercise Notes") },
+                        placeholder = { Text("e.g., Routine performed smoothly with assistance.") },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth().testTag("activity_notes_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = {
+                            viewModel.recordDailyActivity(
+                                activityType = selectedType,
+                                durationMinutes = durationMinutes.toIntOrNull() ?: 30,
+                                metricValue = metricValue.ifEmpty { "Completed" },
+                                painScore = painScore.toInt(),
+                                mood = selectedMood,
+                                notes = notes
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("save_activity_button")
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Log Activity Record", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text("Activity / Exercise Notes") },
-                placeholder = { Text("e.g., Routine performed smoothly with assistance.") },
-                minLines = 2,
-                modifier = Modifier.fillMaxWidth().testTag("activity_notes_input")
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Button(
-                onClick = {
-                    viewModel.recordDailyActivity(
-                        activityType = selectedType,
-                        durationMinutes = durationMinutes.toIntOrNull() ?: 30,
-                        metricValue = metricValue.ifEmpty { "Completed" },
-                        painScore = painScore.toInt(),
-                        mood = selectedMood,
-                        notes = notes
-                    )
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
-                shape = RoundedCornerShape(12.dp),
+            // Right Column: Medical & Activity Gallery Component (Beside Notes)
+            Box(modifier = Modifier.weight(0.9f)) {
+                MedicalGallerySection(viewModel = viewModel)
+            }
+        }
+    } else {
+        // Portrait Layout: Activity Form and Medical Gallery Card stacked with dedicated section beside notes
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("save_activity_button")
+                    .testTag("add_activities_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Log Daily Activity Record", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        text = "Log Daily Activity & Wellness",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Track rehabilitation progress, mobility, pain and mood",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Activity Type Selector Chips
+                    Text("Select Activity Type", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        activityTypes.take(3).forEach { (type, icon) ->
+                            val isSel = selectedType == type
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) Color(0xFFE0F2FE) else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TealAccent else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        selectedType = type
+                                        if (type.contains("Walking")) metricValue = "4,200 steps"
+                                        if (type.contains("Therapy")) metricValue = "Lower body routine"
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(icon, contentDescription = null, tint = if (isSel) TealAccent else Color(0xFF64748B), modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = type.split(" ").first(),
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSel) NavyPrimary else Color(0xFF475569)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        activityTypes.drop(3).forEach { (type, icon) ->
+                            val isSel = selectedType == type
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) Color(0xFFE0F2FE) else Color(0xFFF1F5F9),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TealAccent else Color.Transparent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        selectedType = type
+                                        if (type.contains("Sleep")) metricValue = "8.0 hours"
+                                        if (type.contains("Water")) metricValue = "2,000 mL"
+                                        if (type.contains("Diet")) metricValue = "Low sodium meal"
+                                    }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(icon, contentDescription = null, tint = if (isSel) TealAccent else Color(0xFF64748B), modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = type.split(" ").first(),
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSel) NavyPrimary else Color(0xFF475569)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Duration & Metric Value
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = durationMinutes,
+                            onValueChange = { durationMinutes = it },
+                            label = { Text("Duration (mins)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(0.8f).testTag("activity_duration_input")
+                        )
+                        OutlinedTextField(
+                            value = metricValue,
+                            onValueChange = { metricValue = it },
+                            label = { Text("Measurement / Summary") },
+                            placeholder = { Text("e.g. 5,000 steps, 2.5L water") },
+                            modifier = Modifier.weight(1.2f).testTag("activity_metric_input")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Pain Score (0-10) Interactive Slider
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Pain Level (0 - 10):", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = when {
+                                painScore.toInt() >= 7 -> Color(0xFFFEE2E2)
+                                painScore.toInt() >= 4 -> Color(0xFFFEF3C7)
+                                else -> Color(0xFFD1FAE5)
+                            }
+                        ) {
+                            Text(
+                                text = "${painScore.toInt()} / 10 ${if (painScore.toInt() == 0) "(No Pain)" else if (painScore.toInt() < 4) "(Mild)" else if (painScore.toInt() < 7) "(Moderate)" else "(Severe)"}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = when {
+                                    painScore.toInt() >= 7 -> HealthCriticalRed
+                                    painScore.toInt() >= 4 -> HealthWarningAmber
+                                    else -> Color(0xFF065F46)
+                                },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    Slider(
+                        value = painScore,
+                        onValueChange = { painScore = it },
+                        valueRange = 0f..10f,
+                        steps = 9,
+                        colors = SliderDefaults.colors(
+                            thumbColor = TealAccent,
+                            activeTrackColor = TealAccent
+                        ),
+                        modifier = Modifier.fillMaxWidth().testTag("pain_score_slider")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Mood Selector
+                    Text("How are you feeling today?", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = NavyPrimary)
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        moods.forEach { (moodName, emoji) ->
+                            val isSel = selectedMood == moodName
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSel) Color(0xFFE0F2FE) else Color(0xFFF8FAFC),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, if (isSel) TealAccent else Color(0xFFCBD5E1)),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedMood = moodName }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(emoji, fontSize = 18.sp)
+                                    Text(
+                                        text = moodName,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSel) NavyPrimary else Color(0xFF64748B)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Activity Notes Section
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text("Activity / Exercise Notes") },
+                        placeholder = { Text("e.g., Routine performed smoothly with assistance.") },
+                        minLines = 2,
+                        modifier = Modifier.fillMaxWidth().testTag("activity_notes_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Button(
+                        onClick = {
+                            viewModel.recordDailyActivity(
+                                activityType = selectedType,
+                                durationMinutes = durationMinutes.toIntOrNull() ?: 30,
+                                metricValue = metricValue.ifEmpty { "Completed" },
+                                painScore = painScore.toInt(),
+                                mood = selectedMood,
+                                notes = notes
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("save_activity_button")
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Log Daily Activity Record", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }

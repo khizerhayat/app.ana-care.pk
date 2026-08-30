@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -53,6 +55,7 @@ import androidx.compose.material.icons.filled.ToggleOff
 import androidx.compose.material.icons.filled.ToggleOn
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
+import com.example.ui.components.AdminAuditLogsComponent
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -86,6 +89,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -125,6 +129,9 @@ fun AdminDashboardScreen(
     var selectedRoleFilter by remember { mutableStateOf("ALL") }
     var userToDelete by remember { mutableStateOf<UserAccountEntity?>(null) }
     var expandedUserId by remember { mutableStateOf<String?>(null) }
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Patient layout controls editable state initialized from appConfig
     var editShowVitals by remember(appConfig) { mutableStateOf(appConfig.showVitalsSummary) }
@@ -284,26 +291,38 @@ fun AdminDashboardScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
             ) {
-                Tab(
-                    selected = selectedAdminTab == 0,
-                    onClick = { selectedAdminTab = 0 },
-                    text = { Text("👥 Users & Hierarchy", fontSize = 12.sp, fontWeight = if (selectedAdminTab == 0) FontWeight.Bold else FontWeight.Normal) }
+                val adminTabs = listOf(
+                    Triple("Users & Hierarchy", Icons.Default.Groups, "Users"),
+                    Triple("Layout Studio", Icons.Default.Palette, "Layout"),
+                    Triple("Urgent Pop-ups (${allAlertNotes.size})", Icons.Default.NotificationImportant, "Alerts"),
+                    Triple("App OTA & Updates", Icons.Default.SystemUpdate, "Updates"),
+                    Triple("User & Audit Logs", Icons.Default.ReceiptLong, "Logs")
                 )
-                Tab(
-                    selected = selectedAdminTab == 1,
-                    onClick = { selectedAdminTab = 1 },
-                    text = { Text("🎨 Layout Studio", fontSize = 12.sp, fontWeight = if (selectedAdminTab == 1) FontWeight.Bold else FontWeight.Normal) }
-                )
-                Tab(
-                    selected = selectedAdminTab == 2,
-                    onClick = { selectedAdminTab = 2 },
-                    text = { Text("📢 Urgent Pop-ups (${allAlertNotes.size})", fontSize = 12.sp, fontWeight = if (selectedAdminTab == 2) FontWeight.Bold else FontWeight.Normal) }
-                )
-                Tab(
-                    selected = selectedAdminTab == 3,
-                    onClick = { selectedAdminTab = 3 },
-                    text = { Text("🚀 App OTA & Updates", fontSize = 12.sp, fontWeight = if (selectedAdminTab == 3) FontWeight.Bold else FontWeight.Normal) }
-                )
+                adminTabs.forEachIndexed { index, (title, icon, desc) ->
+                    Tab(
+                        selected = selectedAdminTab == index,
+                        onClick = { selectedAdminTab = index },
+                        icon = {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = desc,
+                                tint = if (selectedAdminTab == index) NavyPrimary else Color(0xFF64748B),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        text = if (isLandscape) {
+                            {
+                                Text(
+                                    text = title,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selectedAdminTab == index) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selectedAdminTab == index) NavyPrimary else Color(0xFF64748B)
+                                )
+                            }
+                        } else null,
+                        modifier = Modifier.testTag("admin_subtab_$index")
+                    )
+                }
             }
         }
 
@@ -739,6 +758,27 @@ fun AdminDashboardScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // ==========================================
+        // TAB 4: User & Audit Log File Viewer (Table Format)
+        // ==========================================
+        if (selectedAdminTab == 4) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(720.dp)
+                ) {
+                    AdminAuditLogsComponent(
+                        viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
             }
         }

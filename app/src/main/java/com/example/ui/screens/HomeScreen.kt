@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -77,6 +78,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -99,6 +101,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
@@ -107,10 +115,25 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val activeAccount by viewModel.activeAccount.collectAsState()
+    val allAccounts by viewModel.allAccounts.collectAsState()
+    val doctorTargetPatient by viewModel.doctorTargetPatient.collectAsState()
     val vitalsList by viewModel.vitalsList.collectAsState()
     val medicationsList by viewModel.allMedicationsList.collectAsState()
     val medicationLogs by viewModel.medicationLogsList.collectAsState()
     val alertsList by viewModel.allAlertNotes.collectAsState()
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    val isCaregiver = activeAccount?.role == "CAREGIVER"
+    val patients = allAccounts.filter { it.role == "PATIENT" }
+    val effectiveSelectedPatient = doctorTargetPatient ?: (
+        if (isCaregiver && activeAccount?.assignedPatientId?.isNotEmpty() == true) {
+            patients.find { it.userId == activeAccount?.assignedPatientId }
+        } else {
+            patients.firstOrNull()
+        }
+    )
 
     // Filter Doctor alerts / messages and Admin announcements
     val doctorAlerts = alertsList.filter {
@@ -128,14 +151,29 @@ fun HomeScreen(
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
             .testTag("home_screen_content"),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // Caregiver Multi-Patient Monitoring Bar (When Caregiver is logged in)
+        if (isCaregiver && patients.isNotEmpty()) {
+            item {
+                CaregiverPatientRosterCard(
+                    patients = patients,
+                    selectedPatient = effectiveSelectedPatient,
+                    onSelectPatient = { patient ->
+                        viewModel.selectCaregiverTargetPatient(patient)
+                    }
+                )
+            }
+        }
+
         // 1. Desktop Hero Banner (matching the desktop view)
         item {
             DesktopHeroBanner(
                 activeAccount = activeAccount,
+                selectedPatient = effectiveSelectedPatient,
+                isLandscape = isLandscape,
                 onAddVitalClick = {
                     viewModel.setAddRecordsSubTab(0)
                     onNavigateToTab(MainTab.ADD_RECORDS)
@@ -150,6 +188,7 @@ fun HomeScreen(
         item {
             DesktopMetricsGrid(
                 latestVital = latestVital,
+                isLandscape = isLandscape,
                 onCardClick = {
                     viewModel.setViewRecordsSubTab(0)
                     onNavigateToTab(MainTab.VIEW_RECORDS)
@@ -161,6 +200,7 @@ fun HomeScreen(
         item {
             VitalsAndGlycemicTrendChartCard(
                 vitalsList = vitalsList,
+                isLandscape = isLandscape,
                 onViewFullHistory = {
                     viewModel.setViewRecordsSubTab(0)
                     onNavigateToTab(MainTab.VIEW_RECORDS)
@@ -221,7 +261,6 @@ fun HomeScreen(
             QuickActionsHub(
                 onNavigateToTab = onNavigateToTab
             )
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -233,21 +272,25 @@ fun HomeScreen(
 @Composable
 fun DesktopHeroBanner(
     activeAccount: UserAccountEntity?,
+    selectedPatient: UserAccountEntity? = null,
+    isLandscape: Boolean = false,
     onAddVitalClick: () -> Unit,
     onMessageDoctorClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isCaregiver = activeAccount?.role == "CAREGIVER"
-    val displayName = activeAccount?.name ?: "Pt. Eleanor Vance"
-    val patientId = if (isCaregiver) (activeAccount?.assignedPatientId ?: "21001001") else (activeAccount?.userId ?: "21001001")
-    val assignedDoc = if (activeAccount?.assignedDoctorId?.isNotEmpty() == true) {
+    val displayName = if (isCaregiver) (selectedPatient?.name ?: "Eleanor Vance") else (activeAccount?.name ?: "Eleanor Vance")
+    val patientId = if (isCaregiver) (selectedPatient?.userId ?: activeAccount?.assignedPatientId ?: "21001001") else (activeAccount?.userId ?: "21001001")
+    val assignedDoc = if (selectedPatient?.assignedDoctorId?.isNotEmpty() == true) {
+        "Dr. Sarah Jenkins, MD (ID: ${selectedPatient.assignedDoctorId})"
+    } else if (activeAccount?.assignedDoctorId?.isNotEmpty() == true) {
         "Dr. Sarah Jenkins, MD (ID: ${activeAccount.assignedDoctorId})"
     } else {
         "Dr. Sarah Jenkins, MD (ID: 1001)"
     }
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -255,111 +298,223 @@ fun DesktopHeroBanner(
             .fillMaxWidth()
             .testTag("desktop_hero_banner")
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Left Content
-            Column(modifier = Modifier.weight(1f)) {
-                // Active Health Monitoring Status Tag
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (isCaregiver) Color(0xFFEDE9FE) else Color(0xFFDCFCE7),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, if (isCaregiver) Color(0xFFC4B5FD) else Color(0xFF86EFAC))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically
+        if (isLandscape) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left Content
+                Column(modifier = Modifier.weight(1f)) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isCaregiver) Color(0xFFEDE9FE) else Color(0xFFDCFCE7),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isCaregiver) Color(0xFFC4B5FD) else Color(0xFF86EFAC))
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(if (isCaregiver) Color(0xFF7C3AED) else HealthNormalGreen)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isCaregiver) Color(0xFF7C3AED) else HealthNormalGreen)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isCaregiver) "CAREGIVER MONITORING • ACTIVE: ${displayName.uppercase()}" else "ACTIVE HEALTH MONITORING",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCaregiver) Color(0xFF5B21B6) else Color(0xFF166534),
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = if (isCaregiver) "Patient Chart: $displayName" else "Welcome back, $displayName",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Text(
+                        text = if (isCaregiver) "Patient ID: $patientId  •  Caregiver: ${activeAccount?.name ?: "On Duty"}  •  Physician: $assignedDoc" else "Patient ID: $patientId  •  Assigned Physician: $assignedDoc",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Right Action Buttons
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = onAddVitalClick,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        modifier = Modifier.testTag("hero_add_vital_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Vital",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (isCaregiver) "CAREGIVER MONITORING • FULL ACCESS" else "ACTIVE HEALTH MONITORING",
-                            fontSize = 10.5.sp,
+                            text = "+ Add Vital",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isCaregiver) Color(0xFF5B21B6) else Color(0xFF166534),
-                            letterSpacing = 0.5.sp
+                            color = Color.White
+                        )
+                    }
+
+                    Button(
+                        onClick = onMessageDoctorClick,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F243E)),
+                        modifier = Modifier.testTag("hero_message_doctor_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QuestionAnswer,
+                            contentDescription = "Message Doctor",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Message Care Team",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
                     }
                 }
+            }
+        } else {
+            // Portrait Layout: Stacked, Action Buttons Span Width Evenly
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isCaregiver) Color(0xFFEDE9FE) else Color(0xFFDCFCE7),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (isCaregiver) Color(0xFFC4B5FD) else Color(0xFF86EFAC))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isCaregiver) Color(0xFF7C3AED) else HealthNormalGreen)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (isCaregiver) "CAREGIVER • ACTIVE" else "HEALTH MONITORING",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCaregiver) Color(0xFF5B21B6) else Color(0xFF166534),
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "ID: $patientId",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-                // Welcome back, Patient Name
+                Spacer(modifier = Modifier.height(6.dp))
+
                 Text(
-                    text = if (isCaregiver) "Caregiver Portal: $displayName" else "Welcome back, $displayName",
-                    style = MaterialTheme.typography.headlineSmall,
+                    text = if (isCaregiver) "Patient: $displayName" else "Welcome, $displayName",
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Patient ID & Assigned Physician
                 Text(
-                    text = if (isCaregiver) "Assigned Patient ID: $patientId  •  Physician: $assignedDoc" else "Patient ID: $patientId  •  Assigned Physician: $assignedDoc",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = assignedDoc,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
-            }
 
-            Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-            // Right Action Buttons
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // + Add Vital Check (Sky Blue / Cyan button)
-                Button(
-                    onClick = onAddVitalClick,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                    modifier = Modifier.testTag("hero_add_vital_button")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add Vital",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "+ Add Vital Check",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
+                    Button(
+                        onClick = onAddVitalClick,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("hero_add_vital_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Vital",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "+ Add Vital",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
 
-                // Message Dr. Sarah (Dark Navy Button)
-                Button(
-                    onClick = onMessageDoctorClick,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F243E)),
-                    modifier = Modifier.testTag("hero_message_doctor_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.QuestionAnswer,
-                        contentDescription = "Message Doctor",
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Message Dr. Sarah",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+                    Button(
+                        onClick = onMessageDoctorClick,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F243E)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .testTag("hero_message_doctor_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QuestionAnswer,
+                            contentDescription = "Message Care Team",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Message MD",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -368,7 +523,7 @@ fun DesktopHeroBanner(
 
 /**
  * 2. High-Precision 4 Metric Cards
- * Matches the 4 cards in the screenshot:
+ * Matches the 4 cards:
  * 1) BLOOD PRESSURE (122 / 78 mmHg, Heart icon, Normal Range, Today 08:30 AM)
  * 2) HEART RATE (72 BPM, Pulse wave icon, Resting Baseline, Recorded: Pt. Self)
  * 3) BLOOD GLUCOSE (108 mg/dL, Blood drop icon, Fasting Baseline, Target: < 120)
@@ -377,6 +532,7 @@ fun DesktopHeroBanner(
 @Composable
 fun DesktopMetricsGrid(
     latestVital: VitalSignEntity?,
+    isLandscape: Boolean = false,
     onCardClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -385,63 +541,121 @@ fun DesktopMetricsGrid(
     val glucoseVal = if (latestVital != null) "${latestVital.bloodGlucose}" else "108"
     val spo2Val = if (latestVital != null) "${latestVital.oxygenSaturation}" else "98"
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("desktop_metrics_grid"),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Card 1: BLOOD PRESSURE
-        SingleMetricCard(
-            title = "BLOOD PRESSURE",
-            value = bpVal,
-            unit = "mmHg",
-            icon = Icons.Default.Favorite,
-            iconColor = Color(0xFFEF4444),
-            badgeText = "Normal Range",
-            footerText = "Today 08:30 AM",
-            onClick = onCardClick,
-            modifier = Modifier.weight(1f)
-        )
-
-        // Card 2: HEART RATE
-        SingleMetricCard(
-            title = "HEART RATE",
-            value = hrVal,
-            unit = "BPM",
-            icon = Icons.Default.MonitorHeart,
-            iconColor = Color(0xFF0284C7),
-            badgeText = "Resting Baseline",
-            footerText = "Recorded: Pt. Self",
-            onClick = onCardClick,
-            modifier = Modifier.weight(1f)
-        )
-
-        // Card 3: BLOOD GLUCOSE
-        SingleMetricCard(
-            title = "BLOOD GLUCOSE",
-            value = glucoseVal,
-            unit = "mg/dL",
-            icon = Icons.Default.WaterDrop,
-            iconColor = Color(0xFFF59E0B),
-            badgeText = "Fasting Baseline",
-            footerText = "Target: < 120",
-            onClick = onCardClick,
-            modifier = Modifier.weight(1f)
-        )
-
-        // Card 4: SPO2 OXYGEN
-        SingleMetricCard(
-            title = "SPO2 OXYGEN",
-            value = spo2Val,
-            unit = "%",
-            icon = Icons.Default.Air,
-            iconColor = Color(0xFF8B5CF6),
-            badgeText = "Optimal Airway",
-            footerText = "Room Air",
-            onClick = onCardClick,
-            modifier = Modifier.weight(1f)
-        )
+    if (isLandscape) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .testTag("desktop_metrics_grid"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SingleMetricCard(
+                title = "BLOOD PRESSURE",
+                value = bpVal,
+                unit = "mmHg",
+                icon = Icons.Default.Favorite,
+                iconColor = Color(0xFFEF4444),
+                badgeText = "Normal Range",
+                footerText = "Today 08:30 AM",
+                onClick = onCardClick,
+                modifier = Modifier.weight(1f)
+            )
+            SingleMetricCard(
+                title = "HEART RATE",
+                value = hrVal,
+                unit = "BPM",
+                icon = Icons.Default.MonitorHeart,
+                iconColor = Color(0xFF0284C7),
+                badgeText = "Resting Baseline",
+                footerText = "Recorded: Pt. Self",
+                onClick = onCardClick,
+                modifier = Modifier.weight(1f)
+            )
+            SingleMetricCard(
+                title = "BLOOD GLUCOSE",
+                value = glucoseVal,
+                unit = "mg/dL",
+                icon = Icons.Default.WaterDrop,
+                iconColor = Color(0xFFF59E0B),
+                badgeText = "Fasting Baseline",
+                footerText = "Target: < 120",
+                onClick = onCardClick,
+                modifier = Modifier.weight(1f)
+            )
+            SingleMetricCard(
+                title = "SPO2 OXYGEN",
+                value = spo2Val,
+                unit = "%",
+                icon = Icons.Default.Air,
+                iconColor = Color(0xFF8B5CF6),
+                badgeText = "Optimal Airway",
+                footerText = "Room Air",
+                onClick = onCardClick,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    } else {
+        // 2x2 Grid in Portrait to utilize space efficiently without squishing or dead gaps
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .testTag("desktop_metrics_grid"),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SingleMetricCard(
+                    title = "BLOOD PRESSURE",
+                    value = bpVal,
+                    unit = "mmHg",
+                    icon = Icons.Default.Favorite,
+                    iconColor = Color(0xFFEF4444),
+                    badgeText = "Normal Range",
+                    footerText = "Today 08:30 AM",
+                    onClick = onCardClick,
+                    modifier = Modifier.weight(1f)
+                )
+                SingleMetricCard(
+                    title = "HEART RATE",
+                    value = hrVal,
+                    unit = "BPM",
+                    icon = Icons.Default.MonitorHeart,
+                    iconColor = Color(0xFF0284C7),
+                    badgeText = "Resting Baseline",
+                    footerText = "Recorded: Pt. Self",
+                    onClick = onCardClick,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SingleMetricCard(
+                    title = "BLOOD GLUCOSE",
+                    value = glucoseVal,
+                    unit = "mg/dL",
+                    icon = Icons.Default.WaterDrop,
+                    iconColor = Color(0xFFF59E0B),
+                    badgeText = "Fasting Baseline",
+                    footerText = "Target: < 120",
+                    onClick = onCardClick,
+                    modifier = Modifier.weight(1f)
+                )
+                SingleMetricCard(
+                    title = "SPO2 OXYGEN",
+                    value = spo2Val,
+                    unit = "%",
+                    icon = Icons.Default.Air,
+                    iconColor = Color(0xFF8B5CF6),
+                    badgeText = "Optimal Airway",
+                    footerText = "Room Air",
+                    onClick = onCardClick,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
     }
 }
 
@@ -458,18 +672,18 @@ fun SingleMetricCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(11.dp)
         ) {
             // Top Row: Title + Icon
             Row(
@@ -479,28 +693,28 @@ fun SingleMetricCard(
             ) {
                 Text(
                     text = title,
-                    fontSize = 11.sp,
+                    fontSize = 10.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.4.sp
                 )
                 Surface(
                     shape = CircleShape,
                     color = iconColor.copy(alpha = 0.12f),
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(26.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = icon,
                             contentDescription = title,
                             tint = iconColor,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Middle: Big Value + Unit
             Row(
@@ -508,45 +722,48 @@ fun SingleMetricCard(
             ) {
                 Text(
                     text = value,
-                    fontSize = 22.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.width(5.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = unit,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 3.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Pill Badge: Normal Range / Resting Baseline
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = Color(0xFFDCFCE7),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC))
-            ) {
-                Text(
-                    text = badgeText,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF15803D),
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    modifier = Modifier.padding(bottom = 2.dp)
                 )
             }
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Footer Subtitle (e.g. Today 08:30 AM / Target < 120)
-            Text(
-                text = footerText,
-                fontSize = 10.5.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-            )
+            // Bottom row: Pill Badge + Footer Subtitle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xFFDCFCE7),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC))
+                ) {
+                    Text(
+                        text = badgeText,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF15803D),
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                    )
+                }
+
+                Text(
+                    text = footerText,
+                    fontSize = 9.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+            }
         }
     }
 }
@@ -559,11 +776,12 @@ fun SingleMetricCard(
 @Composable
 fun VitalsAndGlycemicTrendChartCard(
     vitalsList: List<VitalSignEntity>,
+    isLandscape: Boolean = false,
     onViewFullHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
@@ -574,90 +792,88 @@ fun VitalsAndGlycemicTrendChartCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp)
+                .padding(14.dp)
         ) {
-            // Header Row: Title on Left, Legend on Right
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Title
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.TrendingUp,
-                        contentDescription = "Chart",
-                        tint = Color(0xFF0284C7),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Vitals & Glycemic 7-Day Trend Visualizer",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // 3 Legend items
+            // Header Row / Column for Title & Legend
+            if (isLandscape) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Systolic BP (Blue)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color(0xFF0284C7))
+                        Icon(
+                            imageVector = Icons.Default.TrendingUp,
+                            contentDescription = "Chart",
+                            tint = Color(0xFF0284C7),
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Systolic BP (mmHg)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "Vitals & Glycemic 7-Day Trend Visualizer",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
-                    // Diastolic BP (Green)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color(0xFF10B981))
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                    // 3 Legend items
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LegendItem(color = Color(0xFF0284C7), label = "Systolic BP")
+                        LegendItem(color = Color(0xFF10B981), label = "Diastolic BP")
+                        LegendItem(color = Color(0xFFF59E0B), label = "Glucose")
+                    }
+                }
+            } else {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.TrendingUp,
+                                contentDescription = "Chart",
+                                tint = Color(0xFF0284C7),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "7-Day Vitals Trend",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
                         Text(
-                            text = "Diastolic BP (mmHg)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "Full Logs →",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0284C7),
+                            modifier = Modifier.clickable(onClick = onViewFullHistory)
                         )
                     }
 
-                    // Blood Glucose (Amber dashed)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(Color(0xFFF59E0B))
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Blood Glucose (mg/dL)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LegendItem(color = Color(0xFF0284C7), label = "Systolic")
+                        LegendItem(color = Color(0xFF10B981), label = "Diastolic")
+                        LegendItem(color = Color(0xFFF59E0B), label = "Glucose")
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // 7 Days Data points (Mon -> Today)
             val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Today")
@@ -665,22 +881,23 @@ fun VitalsAndGlycemicTrendChartCard(
             val diastolicValues = listOf(78f, 82f, 88f, 80f, 76f, 81f, 78f)
             val glucoseValues = listOf(105f, 112f, 118f, 106f, 98f, 110f, 108f)
 
-            val yAxisLabels = listOf(160, 150, 140, 130, 120, 110, 100, 90, 80, 70, 60)
+            val yAxisLabels = listOf(160, 140, 120, 100, 80, 60)
+            val chartHeightDp = if (isLandscape) 180.dp else 150.dp
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .height(chartHeightDp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                    .padding(horizontal = 12.dp, vertical = 12.dp)
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
 
-                    val leftPadding = 38.dp.toPx()
-                    val bottomPadding = 24.dp.toPx()
+                    val leftPadding = 30.dp.toPx()
+                    val bottomPadding = 20.dp.toPx()
                     val chartWidth = w - leftPadding
                     val chartHeight = h - bottomPadding
 
@@ -732,25 +949,25 @@ fun VitalsAndGlycemicTrendChartCard(
                             color = color,
                             style = if (isDashed) {
                                 Stroke(
-                                    width = 2.5.dp.toPx(),
+                                    width = 2.dp.toPx(),
                                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f),
                                     cap = StrokeCap.Round
                                 )
                             } else {
-                                Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                                Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
                             }
                         )
 
-                        // Data point dots
+                        // Draw Point dots
                         pointsList.forEach { pt ->
                             drawCircle(
                                 color = Color.White,
-                                radius = 4.5.dp.toPx(),
+                                radius = 4.dp.toPx(),
                                 center = pt
                             )
                             drawCircle(
                                 color = color,
-                                radius = 3.dp.toPx(),
+                                radius = 2.5.dp.toPx(),
                                 center = pt
                             )
                         }
@@ -769,14 +986,14 @@ fun VitalsAndGlycemicTrendChartCard(
                 // Y-Axis Labels overlay on left
                 Column(
                     modifier = Modifier
-                        .height(190.dp)
-                        .width(36.dp),
+                        .height(if (isLandscape) 150.dp else 125.dp)
+                        .width(28.dp),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     yAxisLabels.forEach { label ->
                         Text(
                             text = label.toString(),
-                            fontSize = 9.sp,
+                            fontSize = 8.5.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
@@ -787,14 +1004,14 @@ fun VitalsAndGlycemicTrendChartCard(
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(start = 38.dp)
+                        .padding(start = 30.dp)
                         .fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     days.forEach { day ->
                         Text(
                             text = day,
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = if (day == "Today") FontWeight.Bold else FontWeight.Medium,
                             color = if (day == "Today") Color(0xFF0284C7) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -802,29 +1019,48 @@ fun VitalsAndGlycemicTrendChartCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            if (isLandscape) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Real-Time Telemetry: 7-Day continuous physiological telemetry stream",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-            // Footer with Full History Link
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Real-Time Telemetry: 7-Day continuous physiological telemetry stream",
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Text(
-                    text = "View Full Logs & Diagnostics →",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0284C7),
-                    modifier = Modifier.clickable(onClick = onViewFullHistory)
-                )
+                    Text(
+                        text = "View Full Logs & Diagnostics →",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0284C7),
+                        modifier = Modifier.clickable(onClick = onViewFullHistory)
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(color)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -1315,6 +1551,244 @@ fun QuickHubActionItem(
                     fontSize = 10.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Caregiver Patient Roster Selection Card
+ * Enables Caregiver to quickly switch and monitor all patients in their care circle or clinic
+ */
+@Composable
+fun CaregiverPatientRosterCard(
+    patients: List<UserAccountEntity>,
+    selectedPatient: UserAccountEntity?,
+    onSelectPatient: (UserAccountEntity) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredPatients = remember(patients, searchQuery) {
+        if (searchQuery.isBlank()) patients
+        else patients.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+            it.userId.contains(searchQuery, ignoreCase = true) ||
+            it.email.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFC4B5FD).copy(alpha = 0.6f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("caregiver_patient_roster_card")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFFEDE9FE),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.People,
+                                contentDescription = "Caregiver Patients",
+                                tint = Color(0xFF7C3AED),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Assigned Patients Monitoring Roster",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Select a patient to inspect live vitals, medications & care instructions",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFEDE9FE),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFDDD6FE))
+                ) {
+                    Text(
+                        text = "${patients.size} PATIENTS",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFF6D28D9),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Search filter
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Filter patient by name or ID...", fontSize = 12.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(14.dp))
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF7C3AED),
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("caregiver_patient_search_input")
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Patient Cards Grid / Horizontal list
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                filteredPatients.forEach { patient ->
+                    val isSelected = selectedPatient?.userId == patient.userId
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) Color(0xFFF5F3FF) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) Color(0xFF7C3AED) else MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier
+                            .width(210.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSelectPatient(patient) }
+                            .testTag("caregiver_patient_card_${patient.userId}")
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isSelected) Color(0xFF7C3AED) else Color(0xFF64748B),
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = patient.avatarInitials.ifEmpty { patient.name.take(2).uppercase() },
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+
+                                if (isSelected) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFF7C3AED)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Active",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "ACTIVE",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant
+                                    ) {
+                                        Text(
+                                            text = "SWITCH",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = patient.name,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1
+                            )
+
+                            Text(
+                                text = "ID: ${patient.userId}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = if (patient.relationship.isNotBlank()) "Relation: ${patient.relationship}" else "Primary Care Circle",
+                                fontSize = 10.sp,
+                                color = if (isSelected) Color(0xFF6D28D9) else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                }
             }
         }
     }

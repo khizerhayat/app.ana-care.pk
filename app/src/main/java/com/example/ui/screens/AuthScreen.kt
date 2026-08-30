@@ -53,6 +53,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +78,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.ui.components.AnaCareLogo
+import com.example.ui.components.BiometricDialog
+import com.example.ui.components.MfaVerificationDialog
 import com.example.ui.theme.HealthNormalGreen
 import com.example.ui.theme.NavyDark
 import com.example.ui.theme.NavyPrimary
@@ -93,6 +96,10 @@ fun AuthScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val showMfaDialog by viewModel.showMfaDialog.collectAsState()
+    val showBiometricDialog by viewModel.showBiometricDialog.collectAsState()
+    val currentMfaCode by viewModel.currentMfaCode.collectAsState()
+    val activeAccount by viewModel.activeAccount.collectAsState()
 
     Box(
         modifier = modifier
@@ -172,6 +179,23 @@ fun AuthScreen(
                 }
             }
         }
+    }
+
+    // Modal Dialogs for Authentication Screen
+    if (showBiometricDialog) {
+        BiometricDialog(
+            userName = activeAccount?.name ?: "User",
+            onSuccess = { viewModel.completeBiometricLogin() },
+            onDismiss = { viewModel.setShowBiometricDialog(false) }
+        )
+    }
+
+    if (showMfaDialog) {
+        MfaVerificationDialog(
+            generatedCode = currentMfaCode,
+            onVerify = { viewModel.verifyMfaAndCompleteLogin(it) },
+            onDismiss = { viewModel.setShowMfaDialog(false) }
+        )
     }
 }
 
@@ -253,7 +277,7 @@ private fun LoginCard(
                             color = Color(0xFF64748B)
                         )
                         Text(
-                            text = "Tap to switch role",
+                            text = "1-Tap to choose",
                             fontSize = 9.sp,
                             color = Color(0xFF94A3B8)
                         )
@@ -409,26 +433,58 @@ private fun LoginCard(
                     .testTag("login_password_input")
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // Login Button (with Multi-Factor Authentication Trigger)
+            // 1-Tap Quick Enter Portal Button
+            val activeRoleTitle = when (email) {
+                "dr.jenkins@anacare.org" -> "Doctor Workstation"
+                "james.vance@example.com" -> "Caregiver Portal"
+                "admin@anacare.org" -> "Admin Dashboard"
+                else -> "Patient Dashboard"
+            }
+
             Button(
                 onClick = {
-                    viewModel.loginWithCredentials(email, password) {}
+                    viewModel.loginWithCredentials(email, password, bypassMfa = true) {}
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = when (email) {
+                        "dr.jenkins@anacare.org" -> Color(0xFF047857)
+                        "james.vance@example.com" -> Color(0xFF6D28D9)
+                        "admin@anacare.org" -> Color(0xFFB45309)
+                        else -> NavyPrimary
+                    }
+                ),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .testTag("login_submit_button")
+                    .testTag("quick_direct_login_button")
             ) {
-                Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.MedicalServices, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Sign In with 2FA Security", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text("1-Tap Enter: $activeRoleTitle", fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Login Button (with Multi-Factor Authentication Trigger)
+            OutlinedButton(
+                onClick = {
+                    viewModel.loginWithCredentials(email, password, bypassMfa = false) {}
+                },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .testTag("login_submit_button")
+            ) {
+                Icon(Icons.Default.Lock, contentDescription = null, tint = NavyPrimary, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Sign In with 2FA Code", color = NavyPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Biometric Quick Login Button
             OutlinedButton(
@@ -436,17 +492,17 @@ private fun LoginCard(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(46.dp)
                     .testTag("biometric_login_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.Fingerprint,
                     contentDescription = "Biometric Icon",
                     tint = TealAccent,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Biometric Quick Unlock", color = NavyPrimary, fontWeight = FontWeight.SemiBold)
+                Text("Biometric Quick Unlock", color = NavyPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
             }
 
             Spacer(modifier = Modifier.height(18.dp))

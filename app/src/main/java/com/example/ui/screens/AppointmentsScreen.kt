@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -55,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -82,6 +84,9 @@ fun AppointmentsScreen(
     val appointments by viewModel.appointmentsList.collectAsState()
     var showScheduleDialog by remember { mutableStateOf(false) }
     var selectedFilterTab by remember { mutableIntStateOf(0) } // 0: Upcoming, 1: Past / Completed
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val now = System.currentTimeMillis()
     val upcoming = appointments.filter { it.scheduledEpochMillis >= now - 3600 * 1000L }
@@ -151,13 +156,27 @@ fun AppointmentsScreen(
                             .weight(1f)
                             .clickable { selectedFilterTab = 0 }
                     ) {
-                        Text(
-                            text = "Upcoming (${upcoming.size})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedFilterTab == 0) NavyPrimary else Color.White,
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 12.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarMonth,
+                                contentDescription = "Upcoming Visits",
+                                tint = if (selectedFilterTab == 0) NavyPrimary else Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            if (isLandscape) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Upcoming (${upcoming.size})",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selectedFilterTab == 0) NavyPrimary else Color.White
+                                )
+                            }
+                        }
                     }
 
                     Surface(
@@ -167,13 +186,27 @@ fun AppointmentsScreen(
                             .weight(1f)
                             .clickable { selectedFilterTab = 1 }
                     ) {
-                        Text(
-                            text = "Past History (${past.size})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedFilterTab == 1) NavyPrimary else Color.White,
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 12.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Past History",
+                                tint = if (selectedFilterTab == 1) NavyPrimary else Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            if (isLandscape) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Past History (${past.size})",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selectedFilterTab == 1) NavyPrimary else Color.White
+                                )
+                            }
+                        }
                     }
                 }
             }

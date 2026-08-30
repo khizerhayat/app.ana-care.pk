@@ -3,4 +3,6 @@
     <cache-path name="reports" path="reports/" />
     <external-cache-path name="ext_reports" path="reports/" />
     <files-path name="patient_docs" path="docs/" />
+    <files-path name="medical_gallery" path="medical_gallery/" />
+    <files-path name="all_files" path="." />
 </paths>

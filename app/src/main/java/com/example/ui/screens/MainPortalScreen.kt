@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +97,9 @@ fun MainPortalScreen(
 
     val isDoctor = activeAccount?.role == "MEDICAL_PROFESSIONAL"
     val isAdmin = activeAccount?.role == "ADMIN"
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Listen to user feedback events and trigger login alert checks
     LaunchedEffect(Unit) {
@@ -194,146 +199,451 @@ fun MainPortalScreen(
                     .fillMaxWidth()
                     .testTag("main_portal_bottom_navigation")
             ) {
-                if (isDoctor) {
-                    // Doctor Portal Tab
-                    NavigationBarItem(
-                        selected = activeTab == MainTab.DOCTOR_PORTAL,
-                        onClick = { viewModel.setMainTab(MainTab.DOCTOR_PORTAL) },
-                        icon = { Icon(Icons.Default.MedicalServices, contentDescription = "Doctor Workstation", modifier = Modifier.size(20.dp)) },
-                        label = { Text("Doctor", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.DOCTOR_PORTAL) FontWeight.Bold else FontWeight.Normal) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = NavyPrimary,
-                            selectedTextColor = SkyLight,
-                            indicatorColor = SkyLight,
-                            unselectedIconColor = Color(0xFF94A3B8),
-                            unselectedTextColor = Color(0xFF94A3B8)
-                        ),
-                        modifier = Modifier.testTag("bottom_tab_doctor_portal")
-                    )
-                } else if (isAdmin) {
-                    // Admin Dashboard Tab
-                    NavigationBarItem(
-                        selected = activeTab == MainTab.ADMIN_DASHBOARD,
-                        onClick = { viewModel.setMainTab(MainTab.ADMIN_DASHBOARD) },
-                        icon = { Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin Console", modifier = Modifier.size(20.dp)) },
-                        label = { Text("Admin", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.ADMIN_DASHBOARD) FontWeight.Bold else FontWeight.Normal) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = NavyPrimary,
-                            selectedTextColor = SkyLight,
-                            indicatorColor = SkyLight,
-                            unselectedIconColor = Color(0xFF94A3B8),
-                            unselectedTextColor = Color(0xFF94A3B8)
-                        ),
-                        modifier = Modifier.testTag("bottom_tab_admin_dashboard")
-                    )
-                } else {
-                    // Home Screen (Patient / Caregiver)
-                    val isCaregiver = activeAccount?.role == "CAREGIVER"
-                    NavigationBarItem(
-                        selected = activeTab == MainTab.HOME,
-                        onClick = { viewModel.setMainTab(MainTab.HOME) },
-                        icon = { Icon(Icons.Default.Home, contentDescription = "Home Dashboard", modifier = Modifier.size(20.dp)) },
-                        label = { Text(if (isCaregiver) "Caregiver" else "Home", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.HOME) FontWeight.Bold else FontWeight.Normal) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = NavyPrimary,
-                            selectedTextColor = SkyLight,
-                            indicatorColor = SkyLight,
-                            unselectedIconColor = Color(0xFF94A3B8),
-                            unselectedTextColor = Color(0xFF94A3B8)
-                        ),
-                        modifier = Modifier.testTag("bottom_tab_home")
-                    )
+                when {
+                    isDoctor -> {
+                        // 1. DOCTOR NAVIGATION
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.DOCTOR_PORTAL || activeTab == MainTab.HOME,
+                            onClick = { viewModel.setMainTab(MainTab.DOCTOR_PORTAL) },
+                            icon = { Icon(Icons.Default.MedicalServices, contentDescription = "Doctor Workstation", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Doctor Home", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.DOCTOR_PORTAL || activeTab == MainTab.HOME) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_doctor_portal")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.VIEW_RECORDS,
+                            onClick = { viewModel.setMainTab(MainTab.VIEW_RECORDS) },
+                            icon = { Icon(Icons.Default.Assessment, contentDescription = "Vitals & Charts", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Vitals & Charts", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.VIEW_RECORDS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_view_records")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.ADD_RECORDS,
+                            onClick = { viewModel.setMainTab(MainTab.ADD_RECORDS) },
+                            icon = { Icon(Icons.Default.NoteAdd, contentDescription = "Prescribe", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Prescribe", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.ADD_RECORDS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_add_vitals")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.LAB_RESULTS,
+                            onClick = { viewModel.setMainTab(MainTab.LAB_RESULTS) },
+                            icon = { Icon(Icons.Default.Biotech, contentDescription = "Lab Reviews", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Lab Reviews", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.LAB_RESULTS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_labs")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.MESSAGING,
+                            onClick = { viewModel.setMainTab(MainTab.MESSAGING) },
+                            icon = {
+                                if (unreadMessageCount > 0) {
+                                    BadgedBox(badge = { Badge { Text(unreadMessageCount.toString()) } }) {
+                                        Icon(Icons.Default.Chat, contentDescription = "Consults", modifier = Modifier.size(20.dp))
+                                    }
+                                } else {
+                                    Icon(Icons.Default.Chat, contentDescription = "Consults", modifier = Modifier.size(20.dp))
+                                }
+                            },
+                            label = if (isLandscape) { { Text("Consults", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.MESSAGING) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_messages")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.PROFILE_SETTINGS,
+                            onClick = { viewModel.setMainTab(MainTab.PROFILE_SETTINGS) },
+                            icon = { Icon(Icons.Default.Person, contentDescription = "Physician ID", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Physician ID", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.PROFILE_SETTINGS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_profile")
+                        )
+                    }
+
+                    isAdmin -> {
+                        // 2. ADMIN NAVIGATION
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.ADMIN_DASHBOARD,
+                            onClick = { viewModel.setMainTab(MainTab.ADMIN_DASHBOARD) },
+                            icon = { Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin Console", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Console", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.ADMIN_DASHBOARD) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_admin_dashboard")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.VIEW_RECORDS,
+                            onClick = { viewModel.setMainTab(MainTab.VIEW_RECORDS) },
+                            icon = { Icon(Icons.Default.Assessment, contentDescription = "Audit Records", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Audit Records", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.VIEW_RECORDS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_view_records")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.LAB_RESULTS,
+                            onClick = { viewModel.setMainTab(MainTab.LAB_RESULTS) },
+                            icon = { Icon(Icons.Default.Biotech, contentDescription = "Clinic Labs", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Clinic Labs", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.LAB_RESULTS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_labs")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.MESSAGING,
+                            onClick = { viewModel.setMainTab(MainTab.MESSAGING) },
+                            icon = {
+                                if (unreadMessageCount > 0) {
+                                    BadgedBox(badge = { Badge { Text(unreadMessageCount.toString()) } }) {
+                                        Icon(Icons.Default.Chat, contentDescription = "Broadcasts", modifier = Modifier.size(20.dp))
+                                    }
+                                } else {
+                                    Icon(Icons.Default.Chat, contentDescription = "Broadcasts", modifier = Modifier.size(20.dp))
+                                }
+                            },
+                            label = if (isLandscape) { { Text("Broadcasts", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.MESSAGING) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_messages")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.PROFILE_SETTINGS,
+                            onClick = { viewModel.setMainTab(MainTab.PROFILE_SETTINGS) },
+                            icon = { Icon(Icons.Default.Person, contentDescription = "Security Settings", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Settings", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.PROFILE_SETTINGS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_profile")
+                        )
+                    }
+
+                    activeAccount?.role == "CAREGIVER" -> {
+                        // 3. CAREGIVER NAVIGATION (Full Patient Menu & Screens)
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.HOME,
+                            onClick = { viewModel.setMainTab(MainTab.HOME) },
+                            icon = { Icon(Icons.Default.Home, contentDescription = "Dashboard", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Dashboard", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.HOME) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_home")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.VIEW_RECORDS,
+                            onClick = { viewModel.setMainTab(MainTab.VIEW_RECORDS) },
+                            icon = { Icon(Icons.Default.Assessment, contentDescription = "Records", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Records", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.VIEW_RECORDS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_view_records")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.ADD_RECORDS,
+                            onClick = { viewModel.setMainTab(MainTab.ADD_RECORDS) },
+                            icon = { Icon(Icons.Default.NoteAdd, contentDescription = "Care Log", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Care Log", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.ADD_RECORDS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_add_vitals")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.LAB_RESULTS,
+                            onClick = { viewModel.setMainTab(MainTab.LAB_RESULTS) },
+                            icon = { Icon(Icons.Default.Biotech, contentDescription = "Labs", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Labs", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.LAB_RESULTS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_labs")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.APPOINTMENTS,
+                            onClick = { viewModel.setMainTab(MainTab.APPOINTMENTS) },
+                            icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Visits", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Visits", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.APPOINTMENTS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_appointments")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.MESSAGING,
+                            onClick = { viewModel.setMainTab(MainTab.MESSAGING) },
+                            icon = {
+                                if (unreadMessageCount > 0) {
+                                    BadgedBox(badge = { Badge { Text(unreadMessageCount.toString()) } }) {
+                                        Icon(Icons.Default.Chat, contentDescription = "Messages", modifier = Modifier.size(20.dp))
+                                    }
+                                } else {
+                                    Icon(Icons.Default.Chat, contentDescription = "Messages", modifier = Modifier.size(20.dp))
+                                }
+                            },
+                            label = if (isLandscape) { { Text("Messages", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.MESSAGING) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_messages")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.PROFILE_SETTINGS,
+                            onClick = { viewModel.setMainTab(MainTab.PROFILE_SETTINGS) },
+                            icon = { Icon(Icons.Default.Person, contentDescription = "Profile", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Profile", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.PROFILE_SETTINGS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_profile")
+                        )
+                    }
+
+                    else -> {
+                        // 4. PATIENT NAVIGATION (All patient screens)
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.HOME,
+                            onClick = { viewModel.setMainTab(MainTab.HOME) },
+                            icon = { Icon(Icons.Default.Home, contentDescription = "Home Dashboard", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Home", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.HOME) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_home")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.VIEW_RECORDS,
+                            onClick = { viewModel.setMainTab(MainTab.VIEW_RECORDS) },
+                            icon = { Icon(Icons.Default.Assessment, contentDescription = "My Records", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("My Records", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.VIEW_RECORDS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_view_records")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.ADD_RECORDS,
+                            onClick = { viewModel.setMainTab(MainTab.ADD_RECORDS) },
+                            icon = { Icon(Icons.Default.NoteAdd, contentDescription = "Add Vitals", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Add Vitals", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.ADD_RECORDS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_add_vitals")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.LAB_RESULTS,
+                            onClick = { viewModel.setMainTab(MainTab.LAB_RESULTS) },
+                            icon = { Icon(Icons.Default.Biotech, contentDescription = "My Labs", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("My Labs", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.LAB_RESULTS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_labs")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.APPOINTMENTS,
+                            onClick = { viewModel.setMainTab(MainTab.APPOINTMENTS) },
+                            icon = { Icon(Icons.Default.CalendarMonth, contentDescription = "Visits", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Visits", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.APPOINTMENTS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_appointments")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.MESSAGING,
+                            onClick = { viewModel.setMainTab(MainTab.MESSAGING) },
+                            icon = {
+                                if (unreadMessageCount > 0) {
+                                    BadgedBox(badge = { Badge { Text(unreadMessageCount.toString()) } }) {
+                                        Icon(Icons.Default.Chat, contentDescription = "Messages", modifier = Modifier.size(20.dp))
+                                    }
+                                } else {
+                                    Icon(Icons.Default.Chat, contentDescription = "Messages", modifier = Modifier.size(20.dp))
+                                }
+                            },
+                            label = if (isLandscape) { { Text("Messages", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.MESSAGING) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_messages")
+                        )
+
+                        NavigationBarItem(
+                            selected = activeTab == MainTab.PROFILE_SETTINGS,
+                            onClick = { viewModel.setMainTab(MainTab.PROFILE_SETTINGS) },
+                            icon = { Icon(Icons.Default.Person, contentDescription = "Profile", modifier = Modifier.size(20.dp)) },
+                            label = if (isLandscape) { { Text("Profile", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.PROFILE_SETTINGS) FontWeight.Bold else FontWeight.Normal) } } else null,
+                            alwaysShowLabel = isLandscape,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NavyPrimary,
+                                selectedTextColor = SkyLight,
+                                indicatorColor = SkyLight,
+                                unselectedIconColor = Color(0xFF94A3B8),
+                                unselectedTextColor = Color(0xFF94A3B8)
+                            ),
+                            modifier = Modifier.testTag("bottom_tab_profile")
+                        )
+                    }
                 }
-
-                // Records / Vitals (View Records)
-                NavigationBarItem(
-                    selected = activeTab == MainTab.VIEW_RECORDS,
-                    onClick = { viewModel.setMainTab(MainTab.VIEW_RECORDS) },
-                    icon = { Icon(Icons.Default.Assessment, contentDescription = "View Records", modifier = Modifier.size(20.dp)) },
-                    label = { Text("Records", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.VIEW_RECORDS) FontWeight.Bold else FontWeight.Normal) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NavyPrimary,
-                        selectedTextColor = SkyLight,
-                        indicatorColor = SkyLight,
-                        unselectedIconColor = Color(0xFF94A3B8),
-                        unselectedTextColor = Color(0xFF94A3B8)
-                    ),
-                    modifier = Modifier.testTag("bottom_tab_view_records")
-                )
-
-                // Add Records / Prescribe
-                if (!isAdmin) {
-                    NavigationBarItem(
-                        selected = activeTab == MainTab.ADD_RECORDS,
-                        onClick = { viewModel.setMainTab(MainTab.ADD_RECORDS) },
-                        icon = { Icon(Icons.Default.NoteAdd, contentDescription = "Add Records", modifier = Modifier.size(20.dp)) },
-                        label = { Text(if (isDoctor) "Prescribe" else "Add Data", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.ADD_RECORDS) FontWeight.Bold else FontWeight.Normal) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = NavyPrimary,
-                            selectedTextColor = SkyLight,
-                            indicatorColor = SkyLight,
-                            unselectedIconColor = Color(0xFF94A3B8),
-                            unselectedTextColor = Color(0xFF94A3B8)
-                        ),
-                        modifier = Modifier.testTag("bottom_tab_add_vitals")
-                    )
-                }
-
-                // Lab Results
-                NavigationBarItem(
-                    selected = activeTab == MainTab.LAB_RESULTS,
-                    onClick = { viewModel.setMainTab(MainTab.LAB_RESULTS) },
-                    icon = { Icon(Icons.Default.Biotech, contentDescription = "Lab Results", modifier = Modifier.size(20.dp)) },
-                    label = { Text("Labs", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.LAB_RESULTS) FontWeight.Bold else FontWeight.Normal) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NavyPrimary,
-                        selectedTextColor = SkyLight,
-                        indicatorColor = SkyLight,
-                        unselectedIconColor = Color(0xFF94A3B8),
-                        unselectedTextColor = Color(0xFF94A3B8)
-                    ),
-                    modifier = Modifier.testTag("bottom_tab_labs")
-                )
-
-                // Doctor-Patient Messaging
-                NavigationBarItem(
-                    selected = activeTab == MainTab.MESSAGING,
-                    onClick = { viewModel.setMainTab(MainTab.MESSAGING) },
-                    icon = {
-                        if (unreadMessageCount > 0) {
-                            BadgedBox(badge = { Badge { Text(unreadMessageCount.toString()) } }) {
-                                Icon(Icons.Default.Chat, contentDescription = "Doctor Chat", modifier = Modifier.size(20.dp))
-                            }
-                        } else {
-                            Icon(Icons.Default.Chat, contentDescription = "Doctor Chat", modifier = Modifier.size(20.dp))
-                        }
-                    },
-                    label = { Text("Messages", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.MESSAGING) FontWeight.Bold else FontWeight.Normal) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NavyPrimary,
-                        selectedTextColor = SkyLight,
-                        indicatorColor = SkyLight,
-                        unselectedIconColor = Color(0xFF94A3B8),
-                        unselectedTextColor = Color(0xFF94A3B8)
-                    ),
-                    modifier = Modifier.testTag("bottom_tab_messages")
-                )
-
-                // Profile & Multi-user Settings
-                NavigationBarItem(
-                    selected = activeTab == MainTab.PROFILE_SETTINGS,
-                    onClick = { viewModel.setMainTab(MainTab.PROFILE_SETTINGS) },
-                    icon = { Icon(Icons.Default.Person, contentDescription = "Profiles", modifier = Modifier.size(20.dp)) },
-                    label = { Text("Profile", fontSize = 9.5.sp, fontWeight = if (activeTab == MainTab.PROFILE_SETTINGS) FontWeight.Bold else FontWeight.Normal) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NavyPrimary,
-                        selectedTextColor = SkyLight,
-                        indicatorColor = SkyLight,
-                        unselectedIconColor = Color(0xFF94A3B8),
-                        unselectedTextColor = Color(0xFF94A3B8)
-                    ),
-                    modifier = Modifier.testTag("bottom_tab_profile")
-                )
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -350,7 +660,13 @@ fun MainPortalScreen(
                     .widthIn(max = 1280.dp)
             ) {
                 when (activeTab) {
-                    MainTab.HOME -> HomeScreen(viewModel = viewModel, onNavigateToTab = { viewModel.setMainTab(it) })
+                    MainTab.HOME -> {
+                        if (isDoctor) {
+                            DoctorDashboardScreen(viewModel = viewModel)
+                        } else {
+                            HomeScreen(viewModel = viewModel, onNavigateToTab = { viewModel.setMainTab(it) })
+                        }
+                    }
                     MainTab.DOCTOR_PORTAL -> DoctorDashboardScreen(viewModel = viewModel)
                     MainTab.ADMIN_DASHBOARD -> AdminDashboardScreen(viewModel = viewModel)
                     MainTab.ADD_RECORDS -> AddRecordsScreen(viewModel = viewModel)

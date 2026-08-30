@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.local.entities.AppointmentEntity
+import com.example.data.local.entities.AuditLogEntity
 import com.example.data.local.entities.DailyActivityEntity
 import com.example.data.local.entities.LabResultEntity
 import com.example.data.local.entities.MedicationEntity
@@ -8,6 +9,9 @@ import com.example.data.local.entities.PatientAlertNoteEntity
 import com.example.data.local.entities.UserAccountEntity
 import com.example.data.local.entities.VitalSignEntity
 import com.example.data.security.SecurityManager
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object DummyDataSeeder {
 
@@ -637,6 +641,246 @@ object DummyDataSeeder {
                 actionLink = "MEDICATIONS",
                 timestamp = now - 2 * hour,
                 isAcknowledged = true
+            )
+        )
+    }
+
+    fun generateInitialAuditLogs(now: Long): List<AuditLogEntity> {
+        val min = 60 * 1000L
+        val hour = 3600 * 1000L
+        val day = 24 * 3600 * 1000L
+
+        fun fmt(time: Long): String = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date(time))
+
+        return listOf(
+            // Admin Actions
+            AuditLogEntity(
+                timestamp = now - 5 * min,
+                formattedTimestamp = fmt(now - 5 * min),
+                userId = "9001",
+                userName = "Marcus Vance (Admin)",
+                userRole = "ADMIN",
+                actionType = "USER_LOGIN",
+                category = "AUTH & SECURITY",
+                description = "Administrator Marcus Vance authenticated via biometric verification.",
+                details = "AuthMethod: Biometric+MFA, IP: 192.168.1.10, Device: Admin Workstation Core",
+                severity = "SUCCESS"
+            ),
+            AuditLogEntity(
+                timestamp = now - 25 * min,
+                formattedTimestamp = fmt(now - 25 * min),
+                userId = "9001",
+                userName = "Marcus Vance (Admin)",
+                userRole = "ADMIN",
+                actionType = "CONFIG_UPDATED",
+                category = "SYSTEM CONFIG",
+                description = "Updated live patient portal density to 'CARD_EXPANDED' and verified vital summary widgets.",
+                details = "Key: SYSTEM_CONFIG, ThemeAccent: TEAL_EMERALD, MaintenanceMode: false",
+                severity = "INFO"
+            ),
+            AuditLogEntity(
+                timestamp = now - 2 * hour,
+                formattedTimestamp = fmt(now - 2 * hour),
+                userId = "9001",
+                userName = "Marcus Vance (Admin)",
+                userRole = "ADMIN",
+                actionType = "ALERT_SENT",
+                category = "CLINICAL ALERTS",
+                description = "Broadcasted emergency triage dispatch update to all patients.",
+                details = "Target: ALL, Title: 24/7 Home Health Emergency Line Active, Severity: INFO",
+                severity = "INFO"
+            ),
+
+            // Dr. Sarah Jenkins (1001)
+            AuditLogEntity(
+                timestamp = now - 35 * min,
+                formattedTimestamp = fmt(now - 35 * min),
+                userId = "1001",
+                userName = "Dr. Sarah Jenkins, MD",
+                userRole = "MEDICAL_PROFESSIONAL",
+                actionType = "ALERT_SENT",
+                category = "CLINICAL ALERTS",
+                description = "Dispatched clinical fasting prep notice for Pt. Eleanor Vance.",
+                details = "TargetPatientId: 21001001, ActionLink: LABS, Severity: MEDICATION_ALERT",
+                severity = "INFO"
+            ),
+            AuditLogEntity(
+                timestamp = now - 3 * hour,
+                formattedTimestamp = fmt(now - 3 * hour),
+                userId = "1001",
+                userName = "Dr. Sarah Jenkins, MD",
+                userRole = "MEDICAL_PROFESSIONAL",
+                actionType = "GALLERY_UPLOAD",
+                category = "MEDICAL GALLERY",
+                description = "Uploaded post-op knee dressing clinical photo for Pt. Eleanor Vance.",
+                details = "Category: Wound & Clinical Photo, Incision: Clean and dry",
+                severity = "SUCCESS"
+            ),
+            AuditLogEntity(
+                timestamp = now - 1 * day,
+                formattedTimestamp = fmt(now - 1 * day),
+                userId = "1001",
+                userName = "Dr. Sarah Jenkins, MD",
+                userRole = "MEDICAL_PROFESSIONAL",
+                actionType = "MESSAGE_SENT",
+                category = "TELEHEALTH MESSAGING",
+                description = "Sent encrypted consultation message with CarePlan PDF to Pt. Eleanor Vance.",
+                details = "CipherDigest: SHA-256 Verified, Attachment: CarePlan_Checkup_Guide.pdf (1.1 MB)",
+                severity = "SUCCESS"
+            ),
+
+            // Pt. Eleanor Vance (21001001)
+            AuditLogEntity(
+                timestamp = now - 50 * min,
+                formattedTimestamp = fmt(now - 50 * min),
+                userId = "21001001",
+                userName = "Pt. Eleanor Vance",
+                userRole = "PATIENT",
+                actionType = "VITAL_ADDED",
+                category = "CLINICAL VITALS",
+                description = "Recorded vital signs: BP 122/78 mmHg, HR 72 bpm, SpO2 98%, Temp 98.4°F.",
+                details = "Systolic: 122, Diastolic: 78, HR: 72, SpO2: 98, Glucose: 98 mg/dL, Status: NORMAL",
+                severity = "SUCCESS"
+            ),
+            AuditLogEntity(
+                timestamp = now - 1 * hour - 10 * min,
+                formattedTimestamp = fmt(now - 1 * hour - 10 * min),
+                userId = "21001001",
+                userName = "Pt. Eleanor Vance",
+                userRole = "PATIENT",
+                actionType = "MEDICATION_ACTION",
+                category = "MEDICATIONS",
+                description = "Logged morning dosage of Lisinopril (10 mg) as TAKEN.",
+                details = "MedicationId: 1, Dosage: 10 mg, Route: Oral, AdministeredBy: Self",
+                severity = "SUCCESS"
+            ),
+            AuditLogEntity(
+                timestamp = now - 4 * hour,
+                formattedTimestamp = fmt(now - 4 * hour),
+                userId = "21001001",
+                userName = "Pt. Eleanor Vance",
+                userRole = "PATIENT",
+                actionType = "ACTIVITY_LOGGED",
+                category = "DAILY ACTIVITIES",
+                description = "Logged morning walking session (25 mins, 2,850 steps).",
+                details = "PainScore: 1, Mood: Energetic, Notes: Neighborhood walk with walker support",
+                severity = "INFO"
+            ),
+            AuditLogEntity(
+                timestamp = now - 1 * day - 2 * hour,
+                formattedTimestamp = fmt(now - 1 * day - 2 * hour),
+                userId = "21001001",
+                userName = "Pt. Eleanor Vance",
+                userRole = "PATIENT",
+                actionType = "GALLERY_UPLOAD",
+                category = "MEDICAL GALLERY",
+                description = "Uploaded prescription label image for Lisinopril 10mg.",
+                details = "Category: Prescription / Rx, Verification: Label clear",
+                severity = "INFO"
+            ),
+
+            // Pt. Arthur Vance (21001002)
+            AuditLogEntity(
+                timestamp = now - 1 * hour,
+                formattedTimestamp = fmt(now - 1 * hour),
+                userId = "21001002",
+                userName = "Pt. Arthur Vance",
+                userRole = "PATIENT",
+                actionType = "VITAL_ADDED",
+                category = "CLINICAL VITALS",
+                description = "Recorded vital signs: BP 138/88 mmHg, HR 82 bpm, SpO2 96%.",
+                details = "Systolic: 138, Diastolic: 88, HR: 82, SpO2: 96, Temp: 98.8°F, Status: ELEVATED",
+                severity = "WARNING"
+            ),
+            AuditLogEntity(
+                timestamp = now - 3 * hour,
+                formattedTimestamp = fmt(now - 3 * hour),
+                userId = "21001002",
+                userName = "Pt. Arthur Vance",
+                userRole = "PATIENT",
+                actionType = "MEDICATION_ACTION",
+                category = "MEDICATIONS",
+                description = "Logged Metformin HCl (500 mg) as TAKEN with breakfast.",
+                details = "MedicationId: 4, Dosage: 500 mg, Route: Oral, AdministeredBy: Self",
+                severity = "SUCCESS"
+            ),
+
+            // Caregiver Michael Vance (3001)
+            AuditLogEntity(
+                timestamp = now - 45 * min,
+                formattedTimestamp = fmt(now - 45 * min),
+                userId = "3001",
+                userName = "Michael Vance (Caregiver)",
+                userRole = "CAREGIVER",
+                actionType = "USER_LOGIN",
+                category = "AUTH & SECURITY",
+                description = "Caregiver Michael Vance signed in to monitor Pt. Eleanor & Arthur Vance.",
+                details = "AuthMethod: Password+PIN, Relationship: Son / Primary Caregiver",
+                severity = "INFO"
+            ),
+            AuditLogEntity(
+                timestamp = now - 2 * hour - 15 * min,
+                formattedTimestamp = fmt(now - 2 * hour - 15 * min),
+                userId = "3001",
+                userName = "Michael Vance (Caregiver)",
+                userRole = "CAREGIVER",
+                actionType = "ACTIVITY_LOGGED",
+                category = "DAILY ACTIVITIES",
+                description = "Logged garden walking session for Pt. Arthur Vance (2,100 steps).",
+                details = "Duration: 20 mins, PainScore: 2, Mood: Good, LoggedBy: CG. Michael Vance",
+                severity = "INFO"
+            ),
+
+            // Pt. Harold Finch (21001003)
+            AuditLogEntity(
+                timestamp = now - 5 * hour,
+                formattedTimestamp = fmt(now - 5 * hour),
+                userId = "21001003",
+                userName = "Pt. Harold Finch",
+                userRole = "PATIENT",
+                actionType = "ACTIVITY_LOGGED",
+                category = "DAILY ACTIVITIES",
+                description = "Logged physical therapy and cardiorespiratory conditioning.",
+                details = "Duration: 30 mins, Metric: 4,200 steps, PainScore: 1, Mood: Energetic",
+                severity = "INFO"
+            ),
+            AuditLogEntity(
+                timestamp = now - 1 * day - 4 * hour,
+                formattedTimestamp = fmt(now - 1 * day - 4 * hour),
+                userId = "21001003",
+                userName = "Pt. Harold Finch",
+                userRole = "PATIENT",
+                actionType = "VITAL_ADDED",
+                category = "CLINICAL VITALS",
+                description = "Recorded vital signs: BP 126/80 mmHg, HR 70 bpm, Blood Glucose 142 mg/dL.",
+                details = "Systolic: 126, Diastolic: 80, HR: 70, Glucose: 142, Status: ELEVATED",
+                severity = "WARNING"
+            ),
+
+            // Dr. Robert Chen (1002)
+            AuditLogEntity(
+                timestamp = now - 6 * hour,
+                formattedTimestamp = fmt(now - 6 * hour),
+                userId = "1002",
+                userName = "Dr. Robert Chen, MD",
+                userRole = "MEDICAL_PROFESSIONAL",
+                actionType = "USER_LOGIN",
+                category = "AUTH & SECURITY",
+                description = "Dr. Robert Chen (Cardiology) accessed telemetry portal.",
+                details = "Role: MEDICAL_PROFESSIONAL, Hospital: Metro Heart & Vascular Pavilion",
+                severity = "SUCCESS"
+            ),
+            AuditLogEntity(
+                timestamp = now - 6 * hour - 10 * min,
+                formattedTimestamp = fmt(now - 6 * hour - 10 * min),
+                userId = "1002",
+                userName = "Dr. Robert Chen, MD",
+                userRole = "MEDICAL_PROFESSIONAL",
+                actionType = "CONFIG_UPDATED",
+                category = "SYSTEM CONFIG",
+                description = "Reviewed lipid profile and confirmed Atorvastatin 20mg continuation.",
+                details = "TargetPatientId: 21001001, LabTest: Lipid Profile Panel, Status: ELEVATED",
+                severity = "INFO"
             )
         )
     }

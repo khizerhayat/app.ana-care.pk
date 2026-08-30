@@ -1,5 +1,6 @@
 package com.example.ui.screens.subtabs
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,12 +28,15 @@ import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Medication
 import androidx.compose.material.icons.filled.MedicalServices
@@ -43,6 +48,29 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Healing
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.data.local.entities.MedicalGalleryEntity
+import com.example.ui.components.GalleryCaseVideoCallDialog
+import java.io.File
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -65,10 +93,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -102,6 +134,11 @@ fun ViewRecordsScreen(
     val activitiesList by viewModel.activitiesList.collectAsState()
     val appConfig by viewModel.appConfig.collectAsState()
     val patientAlertNotes by viewModel.patientAlertNotes.collectAsState()
+
+    val galleryList by viewModel.galleryList.collectAsState()
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Column(
         modifier = modifier
@@ -150,7 +187,7 @@ fun ViewRecordsScreen(
                     Tab(
                         selected = selectedSubTab == 0,
                         onClick = { viewModel.setViewRecordsSubTab(0) },
-                        text = { Text("Vitals Records", fontSize = 12.sp, fontWeight = if (selectedSubTab == 0) FontWeight.Bold else FontWeight.Normal) },
+                        text = if (isLandscape) { { Text("Vitals Records", fontSize = 12.sp, fontWeight = if (selectedSubTab == 0) FontWeight.Bold else FontWeight.Normal) } } else null,
                         icon = { Icon(Icons.Default.Favorite, contentDescription = "View Vitals", modifier = Modifier.size(18.dp)) },
                         selectedContentColor = SkyLight,
                         unselectedContentColor = Color(0xFF94A3B8),
@@ -161,7 +198,7 @@ fun ViewRecordsScreen(
                     Tab(
                         selected = selectedSubTab == 1,
                         onClick = { viewModel.setViewRecordsSubTab(1) },
-                        text = { Text("Medication Records", fontSize = 12.sp, fontWeight = if (selectedSubTab == 1) FontWeight.Bold else FontWeight.Normal) },
+                        text = if (isLandscape) { { Text("Medication Records", fontSize = 12.sp, fontWeight = if (selectedSubTab == 1) FontWeight.Bold else FontWeight.Normal) } } else null,
                         icon = { Icon(Icons.Default.Medication, contentDescription = "View Medications", modifier = Modifier.size(18.dp)) },
                         selectedContentColor = SkyLight,
                         unselectedContentColor = Color(0xFF94A3B8),
@@ -172,13 +209,22 @@ fun ViewRecordsScreen(
                     Tab(
                         selected = selectedSubTab == 2,
                         onClick = { viewModel.setViewRecordsSubTab(2) },
-                        text = { Text("Daily Activities", fontSize = 12.sp, fontWeight = if (selectedSubTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                        text = if (isLandscape) { { Text("Daily Activities", fontSize = 12.sp, fontWeight = if (selectedSubTab == 2) FontWeight.Bold else FontWeight.Normal) } } else null,
                         icon = { Icon(Icons.Default.FitnessCenter, contentDescription = "View Activities", modifier = Modifier.size(18.dp)) },
                         selectedContentColor = SkyLight,
                         unselectedContentColor = Color(0xFF94A3B8),
                         modifier = Modifier.testTag("subtab_view_activities")
                     )
                 }
+                Tab(
+                    selected = selectedSubTab == 3,
+                    onClick = { viewModel.setViewRecordsSubTab(3) },
+                    text = if (isLandscape) { { Text("Medical Gallery", fontSize = 12.sp, fontWeight = if (selectedSubTab == 3) FontWeight.Bold else FontWeight.Normal) } } else null,
+                    icon = { Icon(Icons.Default.Collections, contentDescription = "View Gallery", modifier = Modifier.size(18.dp)) },
+                    selectedContentColor = SkyLight,
+                    unselectedContentColor = Color(0xFF94A3B8),
+                    modifier = Modifier.testTag("subtab_view_gallery")
+                )
             }
         }
 
@@ -202,6 +248,11 @@ fun ViewRecordsScreen(
                 2 -> ViewActivitiesSubTab(
                     activities = activitiesList,
                     onExportPdf = { viewModel.exportActivitiesPdfReport() }
+                )
+                3 -> ViewGallerySubTab(
+                    galleryItems = galleryList,
+                    viewModel = viewModel,
+                    onDeleteItem = { id -> viewModel.deleteGalleryImage(id) }
                 )
             }
         }
@@ -877,3 +928,570 @@ private fun MetricHighlightCard(
         }
     }
 }
+
+@Composable
+private fun ViewGallerySubTab(
+    galleryItems: List<MedicalGalleryEntity>,
+    viewModel: PortalViewModel,
+    onDeleteItem: (Long) -> Unit
+) {
+    var selectedCategoryFilter by remember { mutableStateOf("All Categories") }
+    var viewingItem by remember { mutableStateOf<MedicalGalleryEntity?>(null) }
+    var itemToDelete by remember { mutableStateOf<MedicalGalleryEntity?>(null) }
+    var videoCallTargetItem by remember { mutableStateOf<MedicalGalleryEntity?>(null) }
+    var showVideoCallDialog by remember { mutableStateOf(false) }
+
+    val categories = listOf("All Categories") + galleryItems.map { it.category }.distinct()
+    val filteredItems = if (selectedCategoryFilter == "All Categories") {
+        galleryItems
+    } else {
+        galleryItems.filter { it.category == selectedCategoryFilter }
+    }
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("view_gallery_subtab")
+    ) {
+        // Gallery Header Summary Banner with Video Call Action
+        item {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F2544)),
+                modifier = Modifier.fillMaxWidth().testTag("gallery_view_header_card")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF1E3A5F),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Collections,
+                                    contentDescription = null,
+                                    tint = SkyLight,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "Medical & Clinical Gallery",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "${galleryItems.size} total clinical attachments",
+                                fontSize = 11.5.sp,
+                                color = SkyLight
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            videoCallTargetItem = galleryItems.firstOrNull()
+                            showVideoCallDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9333EA)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.testTag("view_gallery_start_call_button")
+                    ) {
+                        Icon(Icons.Default.Videocam, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("3-Way Video Call", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        }
+
+        // Category Filter Chips
+        if (categories.size > 2) {
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    categories.forEach { category ->
+                        val isSelected = selectedCategoryFilter == category
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) NavyPrimary else MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) NavyPrimary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier.clickable { selectedCategoryFilter = category }
+                        ) {
+                            Text(
+                                text = category,
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (filteredItems.isEmpty()) {
+            item {
+                EmptyStateCard(
+                    title = if (galleryItems.isEmpty()) "No Medical Images Uploaded" else "No records in this category",
+                    subtitle = if (galleryItems.isEmpty()) "Uploaded clinical photos, prescriptions, and lab scans from the Add Records > Medical Gallery tab will appear here." else "Try selecting another category filter above."
+                )
+            }
+        } else {
+            item {
+                Text(
+                    text = "Medical Attachments & Scans (${filteredItems.size})",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NavyPrimary
+                )
+            }
+
+            // Grid items chunked in pairs for LazyColumn
+            val chunkedItems = filteredItems.chunked(2)
+            items(chunkedItems) { rowPair ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    for (item in rowPair) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            ViewGalleryGridCard(
+                                item = item,
+                                onClick = { viewingItem = item }
+                            )
+                        }
+                    }
+                    if (rowPair.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+
+    // Fullscreen View Modal Dialog
+    viewingItem?.let { item ->
+        Dialog(onDismissRequest = { viewingItem = null }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth().padding(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = item.title,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NavyPrimary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { viewingItem = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Big Image Area
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(230.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(getViewCategoryGradient(item.category)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (item.imageUri.startsWith("/") || item.imageUri.startsWith("file://") || item.imageUri.startsWith("content://")) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(if (item.imageUri.startsWith("/")) File(item.imageUri) else item.imageUri)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = item.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            ViewClinicalArtIllustration(
+                                category = item.category,
+                                title = item.title
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Category Pill
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = getViewCategoryPillColor(item.category)
+                    ) {
+                        Text(
+                            text = item.category,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = getViewCategoryTextColor(item.category),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val formatted = if (item.formattedDate.isNotEmpty()) {
+                        item.formattedDate
+                    } else {
+                        SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault()).format(Date(item.timestamp))
+                    }
+
+                    Text(
+                        text = "📅 Recorded: $formatted",
+                        fontSize = 12.sp,
+                        color = Color(0xFF64748B)
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "👤 Logged by: ${item.loggedByName} (${item.loggedByRole})",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = NavyDark
+                    )
+
+                    if (item.notes.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFF8FAFC),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Clinical Notes / Observation:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF475569))
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(item.notes, fontSize = 12.5.sp, color = NavyPrimary)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                videoCallTargetItem = item
+                                viewingItem = null
+                                showVideoCallDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9333EA)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("view_modal_discuss_in_video_call")
+                        ) {
+                            Icon(Icons.Default.Videocam, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Discuss in 3-Way Call", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+
+                        Row {
+                            OutlinedButton(
+                                onClick = {
+                                    viewingItem = null
+                                    itemToDelete = item
+                                },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = HealthCriticalRed),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Delete", fontSize = 11.5.sp)
+                            }
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            Button(
+                                onClick = { viewingItem = null },
+                                colors = ButtonDefaults.buttonColors(containerColor = NavyPrimary),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Close", fontSize = 11.5.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Live 3-Way Video Consultation Dialog
+    if (showVideoCallDialog) {
+        GalleryCaseVideoCallDialog(
+            initialGalleryItem = videoCallTargetItem,
+            allGalleryItems = galleryItems,
+            viewModel = viewModel,
+            onDismiss = {
+                showVideoCallDialog = false
+                videoCallTargetItem = null
+            }
+        )
+    }
+
+    // Delete Confirmation Dialog
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text("Delete Gallery Image?", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to remove '${item.title}' from the patient's medical gallery?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteItem(item.id)
+                        itemToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = HealthCriticalRed)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ViewGalleryGridCard(
+    item: MedicalGalleryEntity,
+    onClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .testTag("view_gallery_card_${item.id}")
+    ) {
+        Column {
+            // Image / Thumbnail
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(115.dp)
+                    .background(getViewCategoryGradient(item.category)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (item.imageUri.startsWith("/") || item.imageUri.startsWith("file://") || item.imageUri.startsWith("content://")) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(if (item.imageUri.startsWith("/")) File(item.imageUri) else item.imageUri)
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    ViewClinicalArtIllustration(
+                        category = item.category,
+                        title = item.title,
+                        isCompact = true
+                    )
+                }
+
+                Surface(
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.5f),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .size(24.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.ZoomIn,
+                            contentDescription = "Zoom",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+
+            Column(modifier = Modifier.padding(10.dp)) {
+                Text(
+                    text = item.title,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = NavyPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = getViewCategoryPillColor(item.category)
+                ) {
+                    Text(
+                        text = item.category.split(" ").first(),
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = getViewCategoryTextColor(item.category),
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "By ${item.loggedByRole}",
+                        fontSize = 10.sp,
+                        color = Color(0xFF64748B)
+                    )
+                    Text(
+                        text = item.formattedDate.ifEmpty { SimpleDateFormat("MM/dd/yy", Locale.getDefault()).format(Date(item.timestamp)) },
+                        fontSize = 10.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ViewClinicalArtIllustration(
+    category: String,
+    title: String,
+    isCompact: Boolean = false
+) {
+    val icon = when {
+        category.contains("Rx") || category.contains("Prescription") -> Icons.Default.Medication
+        category.contains("Wound") -> Icons.Default.Healing
+        category.contains("Lab") -> Icons.Default.Science
+        category.contains("Therapy") -> Icons.Default.FitnessCenter
+        category.contains("Diet") -> Icons.Default.Restaurant
+        else -> Icons.Default.Description
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(if (isCompact) 32.dp else 52.dp)
+        )
+        if (!isCompact) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "Clinical Verification Record",
+                fontSize = 11.sp,
+                color = SkyLight,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+private fun getViewCategoryGradient(category: String): Brush {
+    return when {
+        category.contains("Rx") || category.contains("Prescription") -> Brush.linearGradient(
+            listOf(Color(0xFF0284C7), Color(0xFF0369A1))
+        )
+        category.contains("Wound") -> Brush.linearGradient(
+            listOf(Color(0xFFE11D48), Color(0xFF9F1239))
+        )
+        category.contains("Lab") -> Brush.linearGradient(
+            listOf(Color(0xFF7C3AED), Color(0xFF5B21B6))
+        )
+        category.contains("Therapy") -> Brush.linearGradient(
+            listOf(Color(0xFF0D9488), Color(0xFF0F766E))
+        )
+        category.contains("Diet") -> Brush.linearGradient(
+            listOf(Color(0xFFD97706), Color(0xFFB45309))
+        )
+        else -> Brush.linearGradient(
+            listOf(NavyPrimary, NavyDark)
+        )
+    }
+}
+
+private fun getViewCategoryPillColor(category: String): Color {
+    return when {
+        category.contains("Rx") || category.contains("Prescription") -> Color(0xFFE0F2FE)
+        category.contains("Wound") -> Color(0xFFFEE2E2)
+        category.contains("Lab") -> Color(0xFFEDE9FE)
+        category.contains("Therapy") -> Color(0xFFCCFBF1)
+        category.contains("Diet") -> Color(0xFFFEF3C7)
+        else -> Color(0xFFF1F5F9)
+    }
+}
+
+private fun getViewCategoryTextColor(category: String): Color {
+    return when {
+        category.contains("Rx") || category.contains("Prescription") -> Color(0xFF0369A1)
+        category.contains("Wound") -> Color(0xFFBE123C)
+        category.contains("Lab") -> Color(0xFF6D28D9)
+        category.contains("Therapy") -> Color(0xFF0F766E)
+        category.contains("Diet") -> Color(0xFF92400E)
+        else -> NavyPrimary
+    }
+}
+

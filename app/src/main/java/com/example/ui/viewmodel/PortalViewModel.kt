@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
 import com.example.data.local.entities.AppConfigEntity
 import com.example.data.local.entities.AppointmentEntity
+import com.example.data.local.entities.AuditLogEntity
 import com.example.data.local.entities.DailyActivityEntity
 import com.example.data.local.entities.EncryptedMessageEntity
 import com.example.data.local.entities.LabResultEntity
+import com.example.data.local.entities.MedicalGalleryEntity
 import com.example.data.local.entities.MedicationAdministrationLogEntity
 import com.example.data.local.entities.MedicationEntity
 import com.example.data.local.entities.PatientAlertNoteEntity
@@ -17,6 +19,7 @@ import com.example.data.local.entities.VitalSignEntity
 import com.example.data.pdf.PdfReportExporter
 import com.example.data.repository.HealthPortalRepository
 import com.example.data.security.SecurityManager
+import com.example.data.util.LogFileHelper
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -112,7 +115,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
         if (account == null) return "21001001"
         return when (account.role) {
             "MEDICAL_PROFESSIONAL", "ADMIN" -> doctorPatient?.userId ?: "21001001"
-            "CAREGIVER" -> if (account.assignedPatientId.isNotEmpty()) account.assignedPatientId else "21001001"
+            "CAREGIVER" -> doctorPatient?.userId ?: if (account.assignedPatientId.isNotEmpty()) account.assignedPatientId else "21001001"
             else -> account.userId
         }
     }
@@ -161,6 +164,12 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     val appointmentsList: StateFlow<List<AppointmentEntity>> = combine(activeAccount, _doctorTargetPatient) { account, docPatient ->
         val targetId = resolveTargetPatientId(account, docPatient)
         repository.getAppointmentsForPatient(targetId)
+    }.flatMapLatest { it }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val galleryList: StateFlow<List<MedicalGalleryEntity>> = combine(activeAccount, _doctorTargetPatient) { account, docPatient ->
+        val targetId = resolveTargetPatientId(account, docPatient)
+        repository.getGalleryForPatient(targetId)
     }.flatMapLatest { it }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Encrypted Messages for active user
@@ -248,32 +257,16 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val patientAlertNotes: StateFlow<List<PatientAlertNoteEntity>> = activeAccount
-        .flatMapLatest { account ->
-            if (account != null) {
-                val targetId = if (account.role == "PATIENT") account.userId else if (account.assignedPatientId.isNotBlank()) account.assignedPatientId else account.userId
-                repository.getAlertsForPatient(targetId)
-            } else {
-                flowOf(emptyList())
-            }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val patientAlertNotes: StateFlow<List<PatientAlertNoteEntity>> = combine(activeAccount, _doctorTargetPatient) { account, docPatient ->
+        val targetId = resolveTargetPatientId(account, docPatient)
+        repository.getAlertsForPatient(targetId)
+    }.flatMapLatest { it }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val unacknowledgedAlerts: StateFlow<List<PatientAlertNoteEntity>> = activeAccount
-        .flatMapLatest { account ->
-            if (account != null) {
-                val targetId = if (account.role == "CAREGIVER" && account.assignedPatientId.isNotEmpty()) {
-                    account.assignedPatientId
-                } else {
-                    account.userId
-                }
-                repository.getUnacknowledgedAlertsForPatient(targetId)
-            } else {
-                flowOf(emptyList())
-            }
-        }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val unacknowledgedAlerts: StateFlow<List<PatientAlertNoteEntity>> = combine(activeAccount, _doctorTargetPatient) { account, docPatient ->
+        val targetId = resolveTargetPatientId(account, docPatient)
+        repository.getUnacknowledgedAlertsForPatient(targetId)
+    }.flatMapLatest { it }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // Active Alert Pop-up on Patient/Doctor Screen
     private val _currentAlertPopup = MutableStateFlow<PatientAlertNoteEntity?>(null)
@@ -303,11 +296,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     fun triggerLoginAlertPopup() {
         viewModelScope.launch {
             val account = activeAccount.value ?: return@launch
-            val targetId = if (account.role == "CAREGIVER" && account.assignedPatientId.isNotEmpty()) {
-                account.assignedPatientId
-            } else {
-                account.userId
-            }
+            val targetId = resolveTargetPatientId(account, _doctorTargetPatient.value)
             val alerts = repository.getUnacknowledgedAlertsForPatient(targetId).firstOrNull() ?: emptyList()
             if (alerts.isNotEmpty()) {
                 _currentAlertPopup.value = alerts.first()
@@ -391,7 +380,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     // Direct 1-tap Demo Role Login
     fun quickLoginRole(roleKey: String) {
         viewModelScope.launch {
-            val accounts = allAccounts.value
+            val accounts = repository.allAccounts.firstOrNull() ?: allAccounts.value
             val target = when (roleKey.uppercase()) {
                 "DOCTOR", "MEDICAL_PROFESSIONAL" -> accounts.find { it.role == "MEDICAL_PROFESSIONAL" }
                 "CAREGIVER" -> accounts.find { it.role == "CAREGIVER" }
@@ -405,6 +394,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
                     "CAREGIVER", "PATIENT" -> _selectedMainTab.value = MainTab.HOME
                 }
                 repository.switchActiveAccount(target.userId)
+                _pendingLoginUserId.value = null
                 _authState.value = AuthState.Authenticated
                 _userMessage.emit("Signed in as ${target.name} (${target.role})")
                 triggerLoginAlertPopup()
@@ -413,13 +403,13 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Actions
-    fun loginWithCredentials(email: String, pass: String, onRequireMfa: () -> Unit) {
+    fun loginWithCredentials(email: String, pass: String, bypassMfa: Boolean = false, onRequireMfa: () -> Unit = {}) {
         viewModelScope.launch {
-            val accounts = allAccounts.value
+            val accounts = repository.allAccounts.firstOrNull() ?: allAccounts.value
             val cleanEmail = email.trim()
             val user = accounts.find { it.email.equals(cleanEmail, ignoreCase = true) }
                 ?: accounts.find { (cleanEmail.contains("jenkins", ignoreCase = true) || cleanEmail.contains("doctor", ignoreCase = true)) && it.role == "MEDICAL_PROFESSIONAL" }
-                ?: accounts.find { (cleanEmail.contains("caregiver", ignoreCase = true) || cleanEmail.contains("vance", ignoreCase = true)) && it.role == "CAREGIVER" }
+                ?: accounts.find { (cleanEmail.contains("caregiver", ignoreCase = true) || cleanEmail.contains("vance", ignoreCase = true) || cleanEmail.contains("james", ignoreCase = true)) && it.role == "CAREGIVER" }
                 ?: accounts.find { cleanEmail.contains("admin", ignoreCase = true) && it.role == "ADMIN" }
                 ?: accounts.firstOrNull()
             if (user != null) {
@@ -429,13 +419,14 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
                     "ADMIN" -> _selectedMainTab.value = MainTab.ADMIN_DASHBOARD
                     "CAREGIVER", "PATIENT" -> _selectedMainTab.value = MainTab.HOME
                 }
-                if (user.mfaEnabled) {
+                if (user.mfaEnabled && !bypassMfa) {
                     val code = SecurityManager.generateMfaCode()
                     _currentMfaCode.value = code
                     _showMfaDialog.value = true
                     onRequireMfa()
                 } else {
                     repository.switchActiveAccount(user.userId)
+                    _pendingLoginUserId.value = null
                     _authState.value = AuthState.Authenticated
                     _userMessage.emit("Welcome back, ${user.name}")
                     triggerLoginAlertPopup()
@@ -448,10 +439,11 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
 
     fun verifyMfaAndCompleteLogin(enteredCode: String, targetUserId: String? = null) {
         viewModelScope.launch {
+            val accounts = repository.allAccounts.firstOrNull() ?: allAccounts.value
             if (enteredCode.trim() == _currentMfaCode.value || enteredCode.length == 6) {
                 _showMfaDialog.value = false
-                val idToActivate = targetUserId ?: _pendingLoginUserId.value ?: (activeAccount.value?.userId ?: allAccounts.value.firstOrNull()?.userId ?: "21001001")
-                val targetUser = allAccounts.value.find { it.userId == idToActivate }
+                val idToActivate = targetUserId ?: _pendingLoginUserId.value ?: (activeAccount.value?.userId ?: accounts.firstOrNull()?.userId ?: "21001001")
+                val targetUser = accounts.find { it.userId == idToActivate }
                 if (targetUser != null) {
                     when (targetUser.role) {
                         "MEDICAL_PROFESSIONAL", "DOCTOR" -> _selectedMainTab.value = MainTab.DOCTOR_PORTAL
@@ -473,16 +465,20 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     fun completeBiometricLogin() {
         viewModelScope.launch {
             _showBiometricDialog.value = false
-            val defaultUser = allAccounts.value.firstOrNull { it.isCurrentActive } ?: allAccounts.value.firstOrNull()
-            if (defaultUser != null) {
-                when (defaultUser.role) {
+            val accounts = repository.allAccounts.firstOrNull() ?: allAccounts.value
+            val targetUser = _pendingLoginUserId.value?.let { id -> accounts.find { it.userId == id } }
+                ?: accounts.firstOrNull { it.isCurrentActive }
+                ?: accounts.firstOrNull()
+            if (targetUser != null) {
+                when (targetUser.role) {
                     "MEDICAL_PROFESSIONAL", "DOCTOR" -> _selectedMainTab.value = MainTab.DOCTOR_PORTAL
                     "ADMIN" -> _selectedMainTab.value = MainTab.ADMIN_DASHBOARD
                     "CAREGIVER", "PATIENT" -> _selectedMainTab.value = MainTab.HOME
                 }
-                repository.switchActiveAccount(defaultUser.userId)
+                repository.switchActiveAccount(targetUser.userId)
+                _pendingLoginUserId.value = null
                 _authState.value = AuthState.Authenticated
-                _userMessage.emit("Biometric verification verified. Welcome ${defaultUser.name}")
+                _userMessage.emit("Biometric verification verified. Welcome ${targetUser.name}")
                 triggerLoginAlertPopup()
             }
         }
@@ -596,6 +592,12 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val target = allAccounts.value.find { it.userId == userId }
             if (target != null) {
+                if (target.role == "CAREGIVER" && target.assignedPatientId.isNotBlank()) {
+                    val assignedPat = allAccounts.value.find { it.userId == target.assignedPatientId }
+                    if (assignedPat != null) {
+                        _doctorTargetPatient.value = assignedPat
+                    }
+                }
                 when (target.role) {
                     "MEDICAL_PROFESSIONAL", "DOCTOR" -> _selectedMainTab.value = MainTab.DOCTOR_PORTAL
                     "ADMIN" -> _selectedMainTab.value = MainTab.ADMIN_DASHBOARD
@@ -726,11 +728,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             val active = activeAccount.value ?: return@launch
-            val patientId = if (active.role == "CAREGIVER" && active.assignedPatientId.isNotEmpty()) {
-                active.assignedPatientId
-            } else {
-                active.userId
-            }
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
             repository.addVitalSign(
                 patientId = patientId,
                 systolicBp = systolic,
@@ -742,7 +740,15 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
                 respiratoryRate = respRate,
                 weightLbs = weightLbs,
                 notes = notes,
-                measuredBy = active.name
+                measuredBy = "${active.name} (${if (active.role == "PATIENT") "Self" else active.role})"
+            )
+            val severity = if (systolic >= 140 || diastolic >= 90 || spo2 < 95) "WARNING" else "SUCCESS"
+            logAuditAction(
+                actionType = "VITAL_ADDED",
+                category = "CLINICAL VITALS",
+                description = "Recorded vital signs: BP $systolic/$diastolic mmHg, HR $heartRate bpm, SpO2 $spo2%, Temp ${tempF}°F.",
+                details = "Systolic: $systolic, Diastolic: $diastolic, HR: $heartRate, SpO2: $spo2, Glucose: $glucose, Notes: $notes",
+                severity = severity
             )
             _userMessage.emit("Vital signs recorded securely.")
             _selectedMainTab.value = MainTab.VIEW_RECORDS
@@ -768,11 +774,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             val active = activeAccount.value ?: return@launch
-            val patientId = if (active.role == "CAREGIVER" && active.assignedPatientId.isNotEmpty()) {
-                active.assignedPatientId
-            } else {
-                active.userId
-            }
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
             repository.addMedication(
                 patientId = patientId,
                 name = name,
@@ -790,6 +792,13 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
                 endDate = endDate,
                 endDateFormatted = endDateFormatted
             )
+            logAuditAction(
+                actionType = "MEDICATION_ADDED",
+                category = "MEDICATIONS",
+                description = "Prescription added: $name ($dosage, $frequency).",
+                details = "Name: $name, Dosage: $dosage, Route: $route, Category: $category, Scheduled: $scheduledTime",
+                severity = "SUCCESS"
+            )
             _userMessage.emit("Prescription '$name ($dosage)' added successfully.")
         }
     }
@@ -797,13 +806,16 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     fun markMedicationTaken(id: Long, medName: String = "", dosage: String = "") {
         viewModelScope.launch {
             val active = activeAccount.value
-            val patientId = if (active?.role == "CAREGIVER" && active.assignedPatientId.isNotEmpty()) {
-                active.assignedPatientId
-            } else {
-                active?.userId ?: "pat_eleanor_01"
-            }
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
             val adminBy = if (active != null) "${active.name} (${if (active.role == "PATIENT") "Self" else active.role})" else "Self"
             repository.markMedicationAction(id, "TAKEN", patientId, medName, dosage, adminBy)
+            logAuditAction(
+                actionType = "MEDICATION_ACTION",
+                category = "MEDICATIONS",
+                description = "Marked $medName ($dosage) as TAKEN by $adminBy.",
+                details = "MedicationId: $id, Name: $medName, Status: TAKEN, AdministeredBy: $adminBy",
+                severity = "SUCCESS"
+            )
             _userMessage.emit(if (medName.isNotBlank()) "Dose of $medName marked as TAKEN & logged in administration history." else "Dose marked as TAKEN.")
         }
     }
@@ -811,13 +823,16 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     fun markMedicationSkipped(id: Long, medName: String = "", dosage: String = "") {
         viewModelScope.launch {
             val active = activeAccount.value
-            val patientId = if (active?.role == "CAREGIVER" && active.assignedPatientId.isNotEmpty()) {
-                active.assignedPatientId
-            } else {
-                active?.userId ?: "pat_eleanor_01"
-            }
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
             val adminBy = if (active != null) "${active.name} (${if (active.role == "PATIENT") "Self" else active.role})" else "Self"
             repository.markMedicationAction(id, "SKIPPED", patientId, medName, dosage, adminBy)
+            logAuditAction(
+                actionType = "MEDICATION_ACTION",
+                category = "MEDICATIONS",
+                description = "Marked $medName ($dosage) as MISSED/SKIPPED by $adminBy.",
+                details = "MedicationId: $id, Name: $medName, Status: SKIPPED, AdministeredBy: $adminBy",
+                severity = "WARNING"
+            )
             _userMessage.emit(if (medName.isNotBlank()) "Dose of $medName marked as MISSED in history log." else "Dose marked as SKIPPED.")
         }
     }
@@ -832,11 +847,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             val active = activeAccount.value ?: return@launch
-            val patientId = if (active.role == "CAREGIVER" && active.assignedPatientId.isNotEmpty()) {
-                active.assignedPatientId
-            } else {
-                active.userId
-            }
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
             repository.logMedicationAdministration(
                 patientId = patientId,
                 medicationId = medicationId,
@@ -913,11 +924,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             val active = activeAccount.value ?: return@launch
-            val patientId = if (active.role == "CAREGIVER" && active.assignedPatientId.isNotEmpty()) {
-                active.assignedPatientId
-            } else {
-                active.userId
-            }
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
             repository.addDailyActivity(
                 patientId = patientId,
                 activityType = activityType,
@@ -928,9 +935,60 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
                 notes = notes,
                 loggedBy = active.name
             )
+            logAuditAction(
+                actionType = "ACTIVITY_LOGGED",
+                category = "DAILY ACTIVITIES",
+                description = "Logged $activityType ($durationMinutes mins, $metricValue, Mood: $mood).",
+                details = "Type: $activityType, Duration: $durationMinutes min, Metric: $metricValue, Pain: $painScore/10, Mood: $mood",
+                severity = "INFO"
+            )
             _userMessage.emit("Daily activity logged successfully.")
             _selectedMainTab.value = MainTab.VIEW_RECORDS
             _viewRecordsSubTab.value = 2
+        }
+    }
+
+    fun recordGalleryImage(
+        title: String,
+        category: String,
+        imageUri: String,
+        notes: String = ""
+    ) {
+        viewModelScope.launch {
+            val active = activeAccount.value ?: return@launch
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
+            val cleanTitle = title.ifBlank { "Clinical Photo / Document" }
+            repository.addGalleryImage(
+                patientId = patientId,
+                title = cleanTitle,
+                category = category,
+                imageUri = imageUri,
+                notes = notes,
+                loggedByRole = active.role,
+                loggedByName = active.name
+            )
+            logAuditAction(
+                actionType = "GALLERY_UPLOAD",
+                category = "MEDICAL GALLERY",
+                description = "Uploaded medical document / photo: '$cleanTitle' ($category).",
+                details = "Title: $cleanTitle, Category: $category, Notes: $notes, PatientId: $patientId",
+                severity = "SUCCESS"
+            )
+            _userMessage.emit("'$cleanTitle' saved to Medical Gallery.")
+        }
+    }
+
+    fun deleteGalleryImage(id: Long) {
+        viewModelScope.launch {
+            repository.deleteGalleryImage(id)
+            logAuditAction(
+                actionType = "GALLERY_DELETE",
+                category = "MEDICAL GALLERY",
+                description = "Removed medical gallery item #$id.",
+                details = "GalleryId: $id",
+                severity = "WARNING"
+            )
+            _userMessage.emit("Image removed from Medical Gallery.")
         }
     }
 
@@ -946,11 +1004,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             val active = activeAccount.value ?: return@launch
-            val patientId = if (active.role == "CAREGIVER" && active.assignedPatientId.isNotEmpty()) {
-                active.assignedPatientId
-            } else {
-                active.userId
-            }
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
             val entity = LabResultEntity(
                 patientId = patientId,
                 testName = testName,
@@ -968,6 +1022,120 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun saveLabResult(labResult: LabResultEntity) {
+        viewModelScope.launch {
+            if (labResult.id == 0L) {
+                repository.addLabResult(labResult)
+                _userMessage.emit("Diagnostic lab test '${labResult.testName}' added successfully.")
+            } else {
+                repository.updateLabResult(labResult)
+                _userMessage.emit("Diagnostic lab test '${labResult.testName}' updated.")
+            }
+        }
+    }
+
+    fun deleteLabResult(id: Long) {
+        viewModelScope.launch {
+            repository.deleteLabResult(id)
+            _userMessage.emit("Lab record deleted.")
+        }
+    }
+
+    fun recordVitalsForPatient(
+        patientId: String,
+        systolic: Int,
+        diastolic: Int,
+        heartRate: Int,
+        spo2: Int,
+        tempF: Float,
+        glucose: Int,
+        respRate: Int,
+        weightLbs: Float,
+        notes: String
+    ) {
+        viewModelScope.launch {
+            val active = activeAccount.value
+            val doctorName = if (active != null) "${active.name} (${active.role})" else "Attending Physician"
+            repository.addVitalSign(
+                patientId = patientId,
+                systolicBp = systolic,
+                diastolicBp = diastolic,
+                heartRate = heartRate,
+                oxygenSaturation = spo2,
+                temperatureF = tempF,
+                bloodGlucose = glucose,
+                respiratoryRate = respRate,
+                weightLbs = weightLbs,
+                notes = notes,
+                measuredBy = doctorName
+            )
+            _userMessage.emit("Vital signs recorded for patient ID $patientId.")
+        }
+    }
+
+    fun recordDailyActivityForPatient(
+        patientId: String,
+        activityType: String,
+        durationMinutes: Int,
+        metricValue: String,
+        painScore: Int,
+        mood: String,
+        notes: String
+    ) {
+        viewModelScope.launch {
+            val active = activeAccount.value
+            val loggedByName = if (active != null) "${active.name} (${active.role})" else "Attending Physician"
+            repository.addDailyActivity(
+                patientId = patientId,
+                activityType = activityType,
+                durationMinutes = durationMinutes,
+                metricValue = metricValue,
+                painScore = painScore,
+                mood = mood,
+                notes = notes,
+                loggedBy = loggedByName
+            )
+            _userMessage.emit("Daily activity & note recorded for patient ID $patientId.")
+        }
+    }
+
+    fun sendCaregiverSpecialInstruction(
+        targetPatientId: String,
+        targetPatientName: String,
+        title: String,
+        message: String,
+        severity: String = "URGENT",
+        actionLink: String = "NONE"
+    ) {
+        viewModelScope.launch {
+            val active = activeAccount.value
+            val senderName = active?.name ?: "Dr. Sarah Jenkins, MD"
+            val senderId = active?.userId ?: "1001"
+            val alert = com.example.data.local.entities.PatientAlertNoteEntity(
+                targetPatientId = targetPatientId,
+                targetPatientName = targetPatientName,
+                senderId = senderId,
+                senderName = "$senderName (Attending Physician)",
+                senderRole = "DOCTOR",
+                title = title,
+                message = message,
+                severity = severity,
+                timestamp = System.currentTimeMillis(),
+                isAcknowledged = false,
+                actionLink = actionLink
+            )
+            repository.sendPatientAlertNote(alert)
+            _userMessage.emit("Special instruction sent to caregiver for $targetPatientName.")
+        }
+    }
+
+    fun selectCaregiverTargetPatient(patient: UserAccountEntity) {
+        _doctorTargetPatient.value = patient
+        viewModelScope.launch {
+            _userMessage.emit("Switched active monitored patient to ${patient.name}")
+        }
+    }
+
     // Appointments
     fun bookAppointment(
         doctorName: String,
@@ -981,11 +1149,7 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             val active = activeAccount.value ?: return@launch
-            val patientId = if (active.role == "CAREGIVER" && active.assignedPatientId.isNotEmpty()) {
-                active.assignedPatientId
-            } else {
-                active.userId
-            }
+            val patientId = resolveTargetPatientId(active, _doctorTargetPatient.value)
             repository.scheduleAppointment(
                 patientId = patientId,
                 doctorName = doctorName,
@@ -1289,5 +1453,127 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
             val updated = current.copy(isUpdateBannerVisible = false)
             repository.saveAppConfig(updated)
         }
+    }
+
+    // ==========================================
+    // AUDIT LOGGING ENGINE & ADMIN LOG TAB STATE
+    // ==========================================
+    val allAuditLogs: StateFlow<List<AuditLogEntity>> = repository.allAuditLogs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _selectedAuditUserId = MutableStateFlow("ALL")
+    val selectedAuditUserId: StateFlow<String> = _selectedAuditUserId.asStateFlow()
+
+    private val _selectedAuditCategory = MutableStateFlow("ALL")
+    val selectedAuditCategory: StateFlow<String> = _selectedAuditCategory.asStateFlow()
+
+    private val _selectedAuditSeverity = MutableStateFlow("ALL")
+    val selectedAuditSeverity: StateFlow<String> = _selectedAuditSeverity.asStateFlow()
+
+    private val _auditSearchQuery = MutableStateFlow("")
+    val auditSearchQuery: StateFlow<String> = _auditSearchQuery.asStateFlow()
+
+    fun selectAuditUser(userId: String) {
+        _selectedAuditUserId.value = userId
+    }
+
+    fun selectAuditCategory(category: String) {
+        _selectedAuditCategory.value = category
+    }
+
+    fun selectAuditSeverity(severity: String) {
+        _selectedAuditSeverity.value = severity
+    }
+
+    fun setAuditSearchQuery(query: String) {
+        _auditSearchQuery.value = query
+    }
+
+    val filteredAuditLogs: StateFlow<List<AuditLogEntity>> = combine(
+        allAuditLogs,
+        _selectedAuditUserId,
+        _selectedAuditCategory,
+        _selectedAuditSeverity,
+        _auditSearchQuery
+    ) { logs, userFilter, catFilter, sevFilter, query ->
+        logs.filter { log ->
+            val matchesUser = (userFilter == "ALL") || (log.userId == userFilter)
+            val matchesCat = (catFilter == "ALL") || (log.category.equals(catFilter, ignoreCase = true))
+            val matchesSev = (sevFilter == "ALL") || (log.severity.equals(sevFilter, ignoreCase = true))
+            val matchesQuery = query.isBlank() ||
+                    log.description.contains(query, ignoreCase = true) ||
+                    log.details.contains(query, ignoreCase = true) ||
+                    log.userName.contains(query, ignoreCase = true) ||
+                    log.actionType.contains(query, ignoreCase = true) ||
+                    log.userId.contains(query, ignoreCase = true) ||
+                    log.category.contains(query, ignoreCase = true)
+            matchesUser && matchesCat && matchesSev && matchesQuery
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun logAuditAction(
+        actionType: String,
+        category: String,
+        description: String,
+        details: String = "",
+        severity: String = "INFO"
+    ) {
+        viewModelScope.launch {
+            val user = activeAccount.value
+            val uid = user?.userId ?: "9001"
+            val uname = user?.name ?: "Marcus Vance (Admin)"
+            val urole = user?.role ?: "ADMIN"
+            val logId = repository.logUserAction(
+                userId = uid,
+                userName = uname,
+                userRole = urole,
+                actionType = actionType,
+                category = category,
+                description = description,
+                details = details,
+                severity = severity
+            )
+            val entry = AuditLogEntity(
+                id = logId,
+                timestamp = System.currentTimeMillis(),
+                userId = uid,
+                userName = uname,
+                userRole = urole,
+                actionType = actionType,
+                category = category,
+                description = description,
+                details = details,
+                severity = severity
+            )
+            LogFileHelper.appendLog(getApplication(), entry)
+        }
+    }
+
+    fun clearAllAuditLogs() {
+        viewModelScope.launch {
+            repository.clearAuditLogs()
+            _userMessage.emit("System & User audit logs cleared successfully.")
+        }
+    }
+
+    fun exportAuditLogFile(targetUserId: String = "ALL", targetUserName: String = "All Users"): File {
+        val allLogs = allAuditLogs.value
+        val logsToExport = if (targetUserId == "ALL") allLogs else allLogs.filter { it.userId == targetUserId }
+        val file = LogFileHelper.generateCompleteLogFile(
+            context = getApplication(),
+            logs = logsToExport,
+            filterUser = targetUserId,
+            targetUserName = targetUserName
+        )
+        return file
+    }
+
+    fun shareAuditLogFile(targetUserId: String = "ALL", targetUserName: String = "All Users") {
+        val file = exportAuditLogFile(targetUserId, targetUserName)
+        LogFileHelper.shareLogFile(getApplication(), file, "Share Audit Logs ($targetUserName)")
+    }
+
+    fun getRawLogFileContent(): String {
+        return LogFileHelper.readLogFileContent(getApplication())
     }
 }

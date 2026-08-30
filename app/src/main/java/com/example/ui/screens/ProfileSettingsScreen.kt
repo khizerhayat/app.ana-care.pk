@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -81,6 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -107,6 +109,9 @@ fun ProfileSettingsScreen(
     val allMedications by viewModel.allMedicationsList.collectAsState()
 
     val account = activeAccount ?: return
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Main Profile Tabs: 0: Personal Info, 1: Caregiver Circle, 2: Prescriptions, 3: Security & Access
     var selectedMainTab by remember { mutableIntStateOf(0) }
@@ -219,8 +224,8 @@ fun ProfileSettingsScreen(
             Tab(
                 selected = selectedMainTab == 0,
                 onClick = { selectedMainTab = 0 },
-                text = { Text("Personal", fontSize = 12.sp, fontWeight = if (selectedMainTab == 0) FontWeight.Bold else FontWeight.Normal) },
-                icon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                text = if (isLandscape) { { Text("Personal", fontSize = 12.sp, fontWeight = if (selectedMainTab == 0) FontWeight.Bold else FontWeight.Normal) } } else null,
+                icon = { Icon(Icons.Default.Person, contentDescription = "Personal Info", modifier = Modifier.size(18.dp)) },
                 selectedContentColor = SkyLight,
                 unselectedContentColor = Color(0xFF94A3B8),
                 modifier = Modifier.testTag("profile_tab_personal")
@@ -228,8 +233,8 @@ fun ProfileSettingsScreen(
             Tab(
                 selected = selectedMainTab == 1,
                 onClick = { selectedMainTab = 1 },
-                text = { Text("Caregivers", fontSize = 12.sp, fontWeight = if (selectedMainTab == 1) FontWeight.Bold else FontWeight.Normal) },
-                icon = { Icon(Icons.Default.SupervisorAccount, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                text = if (isLandscape) { { Text("Caregivers", fontSize = 12.sp, fontWeight = if (selectedMainTab == 1) FontWeight.Bold else FontWeight.Normal) } } else null,
+                icon = { Icon(Icons.Default.SupervisorAccount, contentDescription = "Caregivers Circle", modifier = Modifier.size(18.dp)) },
                 selectedContentColor = SkyLight,
                 unselectedContentColor = Color(0xFF94A3B8),
                 modifier = Modifier.testTag("profile_tab_caregivers")
@@ -237,8 +242,8 @@ fun ProfileSettingsScreen(
             Tab(
                 selected = selectedMainTab == 2,
                 onClick = { selectedMainTab = 2 },
-                text = { Text("Prescriptions", fontSize = 12.sp, fontWeight = if (selectedMainTab == 2) FontWeight.Bold else FontWeight.Normal) },
-                icon = { Icon(Icons.Default.Medication, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                text = if (isLandscape) { { Text("Prescriptions", fontSize = 12.sp, fontWeight = if (selectedMainTab == 2) FontWeight.Bold else FontWeight.Normal) } } else null,
+                icon = { Icon(Icons.Default.Medication, contentDescription = "Prescriptions", modifier = Modifier.size(18.dp)) },
                 selectedContentColor = SkyLight,
                 unselectedContentColor = Color(0xFF94A3B8),
                 modifier = Modifier.testTag("profile_tab_prescriptions")
@@ -246,8 +251,8 @@ fun ProfileSettingsScreen(
             Tab(
                 selected = selectedMainTab == 3,
                 onClick = { selectedMainTab = 3 },
-                text = { Text("Security", fontSize = 12.sp, fontWeight = if (selectedMainTab == 3) FontWeight.Bold else FontWeight.Normal) },
-                icon = { Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                text = if (isLandscape) { { Text("Security", fontSize = 12.sp, fontWeight = if (selectedMainTab == 3) FontWeight.Bold else FontWeight.Normal) } } else null,
+                icon = { Icon(Icons.Default.Security, contentDescription = "Security", modifier = Modifier.size(18.dp)) },
                 selectedContentColor = SkyLight,
                 unselectedContentColor = Color(0xFF94A3B8),
                 modifier = Modifier.testTag("profile_tab_security")
