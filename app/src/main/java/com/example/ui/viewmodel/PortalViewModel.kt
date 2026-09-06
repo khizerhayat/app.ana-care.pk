@@ -3,10 +3,12 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.cloud.FirebaseSignalingManager
 import com.example.data.local.AppDatabase
 import com.example.data.local.entities.AppConfigEntity
 import com.example.data.local.entities.AppointmentEntity
 import com.example.data.local.entities.AuditLogEntity
+import com.example.data.local.entities.CallLogEntity
 import com.example.data.local.entities.DailyActivityEntity
 import com.example.data.local.entities.EncryptedMessageEntity
 import com.example.data.local.entities.LabResultEntity
@@ -47,8 +49,32 @@ sealed class AuthState {
     object Authenticated : AuthState()
 }
 
+enum class CallStatus {
+    RINGING,
+    CONNECTED,
+    DECLINED,
+    ENDED
+}
+
+enum class CallType {
+    AUDIO,
+    VIDEO
+}
+
+data class ActiveCallSession(
+    val callId: String = UUID.randomUUID().toString(),
+    val caller: UserAccountEntity,
+    val recipient: UserAccountEntity,
+    val callType: CallType = CallType.VIDEO,
+    val participants: List<UserAccountEntity> = emptyList(),
+    val caseItem: MedicalGalleryEntity? = null,
+    val status: CallStatus = CallStatus.RINGING,
+    val startedAt: Long = System.currentTimeMillis()
+)
+
 enum class MainTab {
     HOME,
+    CALLS,
     ADD_RECORDS,
     VIEW_RECORDS,
     LAB_RESULTS,
@@ -62,12 +88,40 @@ enum class MainTab {
 class PortalViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: HealthPortalRepository
+    private val signalingManager: FirebaseSignalingManager
+
+    val isCloudConnected: StateFlow<Boolean>
 
     init {
         val db = AppDatabase.getDatabase(application)
         repository = HealthPortalRepository(db)
+        signalingManager = FirebaseSignalingManager(application, db.encryptedMessageDao())
+        isCloudConnected = signalingManager.isCloudConnected
+
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
+        }
+
+        // Real-time Cloud Signaling & Calling listener
+        viewModelScope.launch {
+            combine(repository.activeAccount, repository.allAccounts) { active, accounts ->
+                Pair(active, accounts)
+            }.collect { (active, accounts) ->
+                if (active != null) {
+                    signalingManager.startListeningForCalls(active.userId, accounts) { updatedCall ->
+                        if (updatedCall != null) {
+                            if (updatedCall.status == CallStatus.ENDED || updatedCall.status == CallStatus.DECLINED) {
+                                _activeCallSession.value = null
+                            } else {
+                                _activeCallSession.value = updatedCall
+                            }
+                        }
+                    }
+                    signalingManager.startListeningForMessages(active.userId)
+                } else {
+                    signalingManager.stopListeners()
+                }
+            }
         }
     }
 
@@ -187,6 +241,52 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
     val unreadMessageCount: StateFlow<Int> = messagesList
         .map { list -> list.count { !it.isRead } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // Call Logs (WhatsApp-style Missed, Received, Dialed calls)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val callLogsList: StateFlow<List<CallLogEntity>> = activeAccount
+        .flatMapLatest { account ->
+            if (account != null) {
+                repository.getAllCallLogsForUser(account.userId)
+            } else {
+                flowOf(emptyList())
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val missedCallCount: StateFlow<Int> = callLogsList
+        .map { list ->
+            val myId = activeAccount.value?.userId ?: ""
+            list.count { it.callDirection == "MISSED" && (it.recipientId == myId || it.callerId == myId) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    private val _callFilter = MutableStateFlow("ALL") // "ALL", "MISSED", "RECEIVED", "DIALED"
+    val callFilter: StateFlow<String> = _callFilter.asStateFlow()
+
+    fun setCallFilter(filter: String) {
+        _callFilter.value = filter
+    }
+
+    private val _callSearchQuery = MutableStateFlow("")
+    val callSearchQuery: StateFlow<String> = _callSearchQuery.asStateFlow()
+
+    fun setCallSearchQuery(query: String) {
+        _callSearchQuery.value = query
+    }
+
+    // Direct Chat Peer Navigation Helper
+    private val _targetChatPeer = MutableStateFlow<UserAccountEntity?>(null)
+    val targetChatPeer: StateFlow<UserAccountEntity?> = _targetChatPeer.asStateFlow()
+
+    fun navigateToChatWithPeer(peer: UserAccountEntity) {
+        _targetChatPeer.value = peer
+        _selectedMainTab.value = MainTab.MESSAGING
+    }
+
+    fun clearTargetChatPeer() {
+        _targetChatPeer.value = null
+    }
 
     init {
         // Automatically default doctor workstation target patient to Eleanor Vance
@@ -333,6 +433,10 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _pdfExportedFile = MutableStateFlow<File?>(null)
     val pdfExportedFile: StateFlow<File?> = _pdfExportedFile.asStateFlow()
+
+    // Real-time Active Telehealth Call Session (Ringing, Connected, Declined)
+    private val _activeCallSession = MutableStateFlow<ActiveCallSession?>(null)
+    val activeCallSession: StateFlow<ActiveCallSession?> = _activeCallSession.asStateFlow()
 
     // Temp SignUp State
     var signupEmail = MutableStateFlow("")
@@ -1182,8 +1286,8 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
         attachmentSize: String? = null
     ) {
         viewModelScope.launch {
-            val active = activeAccount.value ?: return@launch
-            repository.sendEncryptedMessage(
+            val active = activeAccount.value ?: repository.activeAccount.firstOrNull() ?: return@launch
+            val sentEntity = repository.sendEncryptedMessage(
                 senderId = active.userId,
                 senderName = active.name,
                 senderRole = active.role,
@@ -1194,7 +1298,204 @@ class PortalViewModel(application: Application) : AndroidViewModel(application) 
                 attachmentType = attachmentType,
                 attachmentSize = attachmentSize
             )
+            try {
+                signalingManager.publishEncryptedMessage(sentEntity)
+            } catch (_: Exception) {}
             _userMessage.emit("Message delivered with AES-256 E2EE security.")
+        }
+    }
+
+    fun markMessagesAsRead(peerId: String) {
+        viewModelScope.launch {
+            val active = activeAccount.value ?: repository.activeAccount.firstOrNull() ?: return@launch
+            repository.markMessagesAsRead(active.userId, peerId)
+        }
+    }
+
+    // Telehealth Audio & Video Calling Management (WhatsApp Style)
+    fun initiateAudioCall(recipient: UserAccountEntity) {
+        initiateCall(recipient = recipient, callType = CallType.AUDIO, caseItem = null)
+    }
+
+    fun initiateVideoCall(
+        recipient: UserAccountEntity,
+        caseItem: MedicalGalleryEntity? = null
+    ) {
+        initiateCall(recipient = recipient, callType = CallType.VIDEO, caseItem = caseItem)
+    }
+
+    fun initiateCall(
+        recipient: UserAccountEntity,
+        callType: CallType = CallType.VIDEO,
+        caseItem: MedicalGalleryEntity? = null
+    ) {
+        val caller = activeAccount.value ?: return
+        val session = ActiveCallSession(
+            caller = caller,
+            recipient = recipient,
+            callType = callType,
+            participants = listOf(caller, recipient),
+            caseItem = caseItem,
+            status = CallStatus.RINGING,
+            startedAt = System.currentTimeMillis()
+        )
+        _activeCallSession.value = session
+        signalingManager.publishCallInitiation(session)
+
+        // Log dialed call to history
+        viewModelScope.launch {
+            repository.logCall(
+                CallLogEntity(
+                    callId = session.callId,
+                    callerId = caller.userId,
+                    callerName = caller.name,
+                    callerRole = caller.role,
+                    callerAvatar = caller.avatarInitials,
+                    recipientId = recipient.userId,
+                    recipientName = recipient.name,
+                    recipientRole = recipient.role,
+                    recipientAvatar = recipient.avatarInitials,
+                    callType = callType.name,
+                    callDirection = "DIALED",
+                    timestamp = session.startedAt,
+                    durationSeconds = 0,
+                    caseTitle = caseItem?.title
+                )
+            )
+        }
+
+        logAuditAction(
+            actionType = "${callType.name}_CALL_INITIATED",
+            category = "TELEHEALTH ${callType.name}",
+            description = "${caller.name} (${caller.role}) initiated encrypted ${callType.name.lowercase()} call to ${recipient.name} (${recipient.role}).",
+            details = "Status: RINGING. E2EE channel active.",
+            severity = "INFO"
+        )
+    }
+
+    fun addParticipantToActiveCall(newParticipant: UserAccountEntity) {
+        val currentSession = _activeCallSession.value ?: return
+        if (currentSession.participants.none { it.userId == newParticipant.userId }) {
+            val updated = currentSession.copy(participants = currentSession.participants + newParticipant)
+            _activeCallSession.value = updated
+            viewModelScope.launch {
+                _userMessage.emit("${newParticipant.name} (${newParticipant.role}) joined the consultation.")
+            }
+            logAuditAction(
+                actionType = "CALL_PARTICIPANT_ADDED",
+                category = "TELEHEALTH MULTI-PARTY",
+                description = "${newParticipant.name} (${newParticipant.role}) added to active call.",
+                details = "Multi-party group consultation count: ${updated.participants.size}",
+                severity = "INFO"
+            )
+        }
+    }
+
+    fun acceptIncomingCall() {
+        val call = _activeCallSession.value ?: return
+        val updated = call.copy(status = CallStatus.CONNECTED)
+        _activeCallSession.value = updated
+        signalingManager.updateCallStatus(call.callId, CallStatus.CONNECTED)
+
+        // Log received call to history
+        viewModelScope.launch {
+            repository.logCall(
+                CallLogEntity(
+                    callId = call.callId,
+                    callerId = call.caller.userId,
+                    callerName = call.caller.name,
+                    callerRole = call.caller.role,
+                    callerAvatar = call.caller.avatarInitials,
+                    recipientId = call.recipient.userId,
+                    recipientName = call.recipient.name,
+                    recipientRole = call.recipient.role,
+                    recipientAvatar = call.recipient.avatarInitials,
+                    callType = call.callType.name,
+                    callDirection = "RECEIVED",
+                    timestamp = System.currentTimeMillis(),
+                    durationSeconds = 0,
+                    caseTitle = call.caseItem?.title
+                )
+            )
+        }
+
+        logAuditAction(
+            actionType = "CALL_ACCEPTED",
+            category = "TELEHEALTH ${call.callType.name}",
+            description = "${call.recipient.name} accepted ${call.callType.name.lowercase()} call from ${call.caller.name}.",
+            details = "Encrypted multi-stream active.",
+            severity = "SUCCESS"
+        )
+    }
+
+    fun declineIncomingCall() {
+        val call = _activeCallSession.value ?: return
+        _activeCallSession.value = call.copy(status = CallStatus.DECLINED)
+        signalingManager.updateCallStatus(call.callId, CallStatus.DECLINED)
+
+        // Log missed/declined call to history
+        viewModelScope.launch {
+            repository.logCall(
+                CallLogEntity(
+                    callId = call.callId,
+                    callerId = call.caller.userId,
+                    callerName = call.caller.name,
+                    callerRole = call.caller.role,
+                    callerAvatar = call.caller.avatarInitials,
+                    recipientId = call.recipient.userId,
+                    recipientName = call.recipient.name,
+                    recipientRole = call.recipient.role,
+                    recipientAvatar = call.recipient.avatarInitials,
+                    callType = call.callType.name,
+                    callDirection = "MISSED",
+                    timestamp = System.currentTimeMillis(),
+                    durationSeconds = 0,
+                    caseTitle = call.caseItem?.title
+                )
+            )
+        }
+
+        logAuditAction(
+            actionType = "CALL_DECLINED",
+            category = "TELEHEALTH ${call.callType.name}",
+            description = "${call.recipient.name} declined call from ${call.caller.name}.",
+            details = "Call declined.",
+            severity = "WARNING"
+        )
+        viewModelScope.launch {
+            _userMessage.emit("Call was declined.")
+            kotlinx.coroutines.delay(1000)
+            _activeCallSession.value = null
+        }
+    }
+
+    fun endVideoCall(durationSeconds: Int = 0) {
+        val call = _activeCallSession.value
+        if (call != null) {
+            signalingManager.updateCallStatus(call.callId, CallStatus.ENDED)
+            logAuditAction(
+                actionType = "CALL_ENDED",
+                category = "TELEHEALTH ${call.callType.name}",
+                description = "Telehealth ${call.callType.name.lowercase()} call between ${call.caller.name} and ${call.recipient.name} ended.",
+                details = "Duration: ${durationSeconds}s",
+                severity = "INFO"
+            )
+        }
+        _activeCallSession.value = null
+    }
+
+    fun deleteCallLog(id: Long) {
+        viewModelScope.launch {
+            repository.deleteCallLog(id)
+            _userMessage.emit("Call record removed.")
+        }
+    }
+
+    fun clearAllCallLogs() {
+        viewModelScope.launch {
+            val myId = activeAccount.value?.userId ?: return@launch
+            repository.clearAllCallLogs(myId)
+            _userMessage.emit("Call history cleared.")
         }
     }
 

@@ -5,11 +5,13 @@ import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,10 +27,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -38,6 +42,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Chat
@@ -48,6 +54,7 @@ import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
@@ -55,11 +62,14 @@ import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PinDrop
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SupervisedUserCircle
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
@@ -104,6 +114,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
@@ -153,8 +174,9 @@ data class ClinicalImagePin(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GalleryCaseVideoCallDialog(
-    initialGalleryItem: MedicalGalleryEntity?,
-    allGalleryItems: List<MedicalGalleryEntity>,
+    initialGalleryItem: MedicalGalleryEntity? = null,
+    allGalleryItems: List<MedicalGalleryEntity> = emptyList(),
+    initialTargetParticipant: UserAccountEntity? = null,
     viewModel: PortalViewModel,
     onDismiss: () -> Unit
 ) {
@@ -164,66 +186,116 @@ fun GalleryCaseVideoCallDialog(
     val allAccounts by viewModel.allAccounts.collectAsState()
     val vitalsList by viewModel.vitalsList.collectAsState()
 
-    // 1. Identify Connected Triad: Patient, Caretaker, Doctor
-    val targetPatient: UserAccountEntity = remember(activeAccount, allAccounts) {
-        val active = activeAccount
-        when {
-            active?.role == "PATIENT" -> active
-            active?.role == "CAREGIVER" -> {
-                allAccounts.find { it.userId == active.assignedPatientId }
-                    ?: allAccounts.find { it.role == "PATIENT" && it.isPrimaryPatient }
-                    ?: allAccounts.find { it.role == "PATIENT" }
-                    ?: active
-            }
-            active?.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL") -> {
-                viewModel.doctorTargetPatient.value
-                    ?: allAccounts.find { it.role == "PATIENT" && it.isPrimaryPatient }
-                    ?: allAccounts.find { it.role == "PATIENT" }
-                    ?: active
-            }
-            else -> {
-                allAccounts.find { it.role == "PATIENT" && it.isPrimaryPatient }
-                    ?: allAccounts.find { it.role == "PATIENT" }
-                    ?: UserAccountEntity(
-                        userId = "21001001",
-                        name = "Pt. Eleanor Vance",
-                        email = "eleanor.vance@example.com",
-                        role = "PATIENT"
-                    )
+    // 1. Identify Caller
+    val caller: UserAccountEntity = remember(activeAccount, allAccounts) {
+        activeAccount
+            ?: allAccounts.find { it.role == "PATIENT" && it.isPrimaryPatient }
+            ?: allAccounts.find { it.role == "PATIENT" }
+            ?: UserAccountEntity(
+                userId = "21001001",
+                name = "Pt. Eleanor Vance",
+                email = "eleanor.vance@example.com",
+                role = "PATIENT"
+            )
+    }
+
+    // 2. Identify Initial Single Recipient (Call 1-on-1 first, instead of all at once)
+    val defaultRecipient: UserAccountEntity = remember(initialTargetParticipant, caller, allAccounts) {
+        if (initialTargetParticipant != null && initialTargetParticipant.userId != caller.userId) {
+            initialTargetParticipant
+        } else {
+            when (caller.role) {
+                "PATIENT" -> {
+                    allAccounts.find { it.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL") }
+                        ?: allAccounts.find { it.role == "CAREGIVER" }
+                        ?: UserAccountEntity(
+                            userId = "1001",
+                            name = "Dr. Sarah Jenkins, MD",
+                            email = "dr.jenkins@anacare.org",
+                            role = "MEDICAL_PROFESSIONAL",
+                            specialty = "Internal Medicine & Wound Specialist"
+                        )
+                }
+                "CAREGIVER" -> {
+                    allAccounts.find { it.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL") }
+                        ?: allAccounts.find { it.role == "PATIENT" }
+                        ?: UserAccountEntity(
+                            userId = "1001",
+                            name = "Dr. Sarah Jenkins, MD",
+                            email = "dr.jenkins@anacare.org",
+                            role = "MEDICAL_PROFESSIONAL",
+                            specialty = "Internal Medicine & Wound Specialist"
+                        )
+                }
+                "DOCTOR", "MEDICAL_PROFESSIONAL" -> {
+                    viewModel.doctorTargetPatient.value
+                        ?: allAccounts.find { it.role == "PATIENT" && it.isPrimaryPatient }
+                        ?: allAccounts.find { it.role == "PATIENT" }
+                        ?: UserAccountEntity(
+                            userId = "21001001",
+                            name = "Pt. Eleanor Vance",
+                            email = "eleanor.vance@example.com",
+                            role = "PATIENT"
+                        )
+                }
+                else -> {
+                    allAccounts.find { it.userId != caller.userId }
+                        ?: UserAccountEntity(
+                            userId = "1001",
+                            name = "Dr. Sarah Jenkins, MD",
+                            email = "dr.jenkins@anacare.org",
+                            role = "MEDICAL_PROFESSIONAL"
+                        )
+                }
             }
         }
     }
 
-    val linkedCaregiver: UserAccountEntity = remember(targetPatient, allAccounts) {
-        allAccounts.find { it.role == "CAREGIVER" && it.assignedPatientId == targetPatient.userId }
-            ?: allAccounts.find { it.role == "CAREGIVER" }
-            ?: UserAccountEntity(
-                userId = "3000",
-                name = "CG. James Vance",
-                email = "james.vance@example.com",
-                role = "CAREGIVER",
-                relationship = "Son & Primary Caregiver"
-            )
+    // 3. Connected Call Participants (Starts with 1-on-1: caller + single person)
+    val connectedParticipants = remember {
+        mutableStateListOf<UserAccountEntity>().apply {
+            add(caller)
+            if (defaultRecipient.userId != caller.userId) {
+                add(defaultRecipient)
+            }
+        }
     }
 
-    val assignedDoctor: UserAccountEntity = remember(targetPatient, allAccounts) {
-        allAccounts.find { it.userId == targetPatient.assignedDoctorId }
+    var showAddParticipantDialog by remember { mutableStateOf(false) }
+
+    // Remaining contacts available to invite: Filtered to only relevant Caregivers, Doctors, and Patients (not all users)
+    val availableToInvite = remember(connectedParticipants.toList(), allAccounts, caller) {
+        val connectedIds = connectedParticipants.map { it.userId }.toSet()
+        allAccounts.filter { acc ->
+            !connectedIds.contains(acc.userId) &&
+            when (caller.role) {
+                "PATIENT" -> acc.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL", "CAREGIVER")
+                "DOCTOR", "MEDICAL_PROFESSIONAL" -> acc.role in listOf("PATIENT", "CAREGIVER", "DOCTOR", "MEDICAL_PROFESSIONAL")
+                "CAREGIVER" -> acc.role in listOf("PATIENT", "DOCTOR", "MEDICAL_PROFESSIONAL")
+                else -> acc.role in listOf("PATIENT", "DOCTOR", "MEDICAL_PROFESSIONAL", "CAREGIVER")
+            }
+        }
+    }
+
+    val targetPatient: UserAccountEntity = remember(connectedParticipants.toList(), allAccounts) {
+        connectedParticipants.find { it.role == "PATIENT" }
+            ?: allAccounts.find { it.role == "PATIENT" && it.isPrimaryPatient }
+            ?: allAccounts.find { it.role == "PATIENT" }
+            ?: UserAccountEntity(userId = "21001001", name = "Pt. Eleanor Vance", email = "eleanor.vance@example.com", role = "PATIENT")
+    }
+
+    val assignedDoctor: UserAccountEntity = remember(connectedParticipants.toList(), allAccounts) {
+        connectedParticipants.find { it.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL") }
             ?: allAccounts.find { it.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL") }
-            ?: UserAccountEntity(
-                userId = "1001",
-                name = "Dr. Sarah Jenkins, MD",
-                email = "dr.jenkins@anacare.org",
-                role = "MEDICAL_PROFESSIONAL",
-                specialty = "Internal Medicine & Wound Specialist"
-            )
+            ?: UserAccountEntity(userId = "1001", name = "Dr. Sarah Jenkins, MD", email = "dr.jenkins@anacare.org", role = "MEDICAL_PROFESSIONAL", specialty = "Internal Medicine")
     }
 
-    // 2. Active Image under discussion
+    // 4. Active Image under discussion
     var currentCaseItem by remember {
         mutableStateOf(initialGalleryItem ?: allGalleryItems.firstOrNull())
     }
 
-    // 3. Call State Controls
+    // 5. Call State Controls
     var isMicMuted by remember { mutableStateOf(false) }
     var isVideoOff by remember { mutableStateOf(false) }
     var isFrontCamera by remember { mutableStateOf(true) }
@@ -231,17 +303,16 @@ fun GalleryCaseVideoCallDialog(
     var showChatDrawer by remember { mutableStateOf(false) }
     var showVitalsHud by remember { mutableStateOf(true) }
     var showDirectivesInput by remember { mutableStateOf(false) }
-    var selectedViewMode by remember { mutableStateOf(0) } // 0: Shared Split-Screen, 1: Full Case Image, 2: 3-Way Video Grid
+    var selectedViewMode by remember { mutableStateOf(2) } // 0: Shared Split-Screen, 1: Full Case Image, 2: Full Screen Video View
     var showEndCallConfirm by remember { mutableStateOf(false) }
 
-    // 4. Timer & Audio Animation
+    // 6. Timer & Audio Animation
     var callSeconds by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
-        // Log Audit event on call start
         viewModel.logAuditAction(
             actionType = "VIDEO_CALL_START",
             category = "TELEHEALTH VIDEO",
-            description = "Started 3-way Gallery Video Consultation for ${targetPatient.name} with Caregiver ${linkedCaregiver.name} and ${assignedDoctor.name}.",
+            description = "Started 1-on-1 Video Consultation between ${caller.name} and ${defaultRecipient.name}.",
             details = "Image: ${currentCaseItem?.title ?: "General Case"}, Room: ROOM-GAL-${(1000..9999).random()}",
             severity = "SUCCESS"
         )
@@ -257,12 +328,14 @@ fun GalleryCaseVideoCallDialog(
         String.format("%02d:%02d", mins, secs)
     }
 
-    // Active speaking simulation rotation
-    var activeSpeakerIndex by remember { mutableIntStateOf(2) } // 0: Patient, 1: Caregiver, 2: Doctor
-    LaunchedEffect(Unit) {
+    // Active speaking simulation rotation among connected members
+    var activeSpeakerIndex by remember { mutableIntStateOf(1) }
+    LaunchedEffect(connectedParticipants.size) {
         while (true) {
-            delay(6000L)
-            activeSpeakerIndex = (activeSpeakerIndex + 1) % 3
+            delay(5000L)
+            if (connectedParticipants.isNotEmpty()) {
+                activeSpeakerIndex = (activeSpeakerIndex + 1) % connectedParticipants.size
+            }
         }
     }
 
@@ -272,7 +345,7 @@ fun GalleryCaseVideoCallDialog(
             ClinicalImagePin(
                 xFraction = 0.52f,
                 yFraction = 0.44f,
-                placedBy = assignedDoctor.name,
+                placedBy = defaultRecipient.name,
                 label = "Granulation Margin",
                 color = Color(0xFF2563EB)
             )
@@ -283,21 +356,15 @@ fun GalleryCaseVideoCallDialog(
     val chatMessages = remember {
         mutableStateListOf(
             VideoCallChatMessage(
-                senderName = assignedDoctor.name,
-                senderRole = "DOCTOR",
-                text = "Hello Eleanor and James. I am reviewing the uploaded photo together with you on the shared screen.",
+                senderName = caller.name,
+                senderRole = caller.role,
+                text = "Live video consultation connected with ${defaultRecipient.name}.",
                 timeFormatted = "Just now"
             ),
             VideoCallChatMessage(
-                senderName = linkedCaregiver.name,
-                senderRole = "CAREGIVER",
-                text = "Good afternoon Dr. Jenkins. We applied the prescribed saline dressing this morning at 9:00 AM.",
-                timeFormatted = "Just now"
-            ),
-            VideoCallChatMessage(
-                senderName = targetPatient.name,
-                senderRole = "PATIENT",
-                text = "The tenderness is much less than 3 days ago. No fever noted.",
+                senderName = defaultRecipient.name,
+                senderRole = defaultRecipient.role,
+                text = "Hello! Video and encrypted audio stream established. I am ready to review the case.",
                 timeFormatted = "Just now"
             )
         )
@@ -382,8 +449,11 @@ fun GalleryCaseVideoCallDialog(
                             }
                         }
 
-                        // Center: View Mode Switcher Chips
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // Center: View Mode Switcher Chips & Add Participant Button
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
                                 color = if (selectedViewMode == 0) TealAccent else Color(0xFF28385E),
@@ -418,12 +488,34 @@ fun GalleryCaseVideoCallDialog(
                                 modifier = Modifier.clickable { selectedViewMode = 2 }
                             ) {
                                 Text(
-                                    text = "Video Grid",
+                                    text = "Video Grid (${connectedParticipants.size})",
                                     fontSize = 10.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (selectedViewMode == 2) NavyDark else Color.White,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                                 )
+                            }
+
+                            // Quick Add Participant Header Button
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFF1E3A8A),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3B82F6)),
+                                modifier = Modifier.clickable { showAddParticipantDialog = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color(0xFF93C5FD), modifier = Modifier.size(11.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = "+ Add",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
                             }
                         }
 
@@ -487,9 +579,9 @@ fun GalleryCaseVideoCallDialog(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                val bpText = if (latestVital != null) "${latestVital.systolic}/${latestVital.diastolic} mmHg" else "128/82 mmHg"
+                                val bpText = if (latestVital != null) "${latestVital.systolicBp}/${latestVital.diastolicBp} mmHg" else "128/82 mmHg"
                                 val hrText = if (latestVital != null) "${latestVital.heartRate} bpm" else "72 bpm"
-                                val spo2Text = if (latestVital != null) "${latestVital.spo2}%" else "98%"
+                                val spo2Text = if (latestVital != null) "${latestVital.oxygenSaturation}%" else "98%"
                                 val tempText = if (latestVital != null) "${latestVital.temperatureF}°F" else "98.4°F"
 
                                 VitalsBadge(label = "BP", value = bpText, color = TealAccent)
@@ -511,7 +603,7 @@ fun GalleryCaseVideoCallDialog(
                 ) {
                     when (selectedViewMode) {
                         0 -> {
-                            // SPLIT VIEW: Shared Image on Top/Left, 3-Party Video Grid below
+                            // SPLIT VIEW: Shared Image on Top, Connected Video Grid below
                             Column(modifier = Modifier.fillMaxSize()) {
                                 // Shared Gallery Case Board
                                 Box(
@@ -525,7 +617,7 @@ fun GalleryCaseVideoCallDialog(
                                         allGalleryItems = allGalleryItems,
                                         onSelectCase = { currentCaseItem = it },
                                         onAddPin = { x, y ->
-                                            val author = activeAccount?.name ?: assignedDoctor.name
+                                            val author = activeAccount?.name ?: caller.name
                                             imagePins.add(
                                                 ClinicalImagePin(
                                                     xFraction = x,
@@ -546,45 +638,72 @@ fun GalleryCaseVideoCallDialog(
 
                                 Spacer(modifier = Modifier.height(6.dp))
 
-                                // 3 Video Streams Row
+                                // Connected Video Streams Row (1-on-1 by default, or multi-party)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .weight(0.42f),
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    ParticipantVideoTile(
-                                        name = targetPatient.name,
-                                        role = "PATIENT (Self / Home)",
-                                        roleColor = TealAccent,
-                                        isSpeaking = activeSpeakerIndex == 0,
-                                        isMuted = false,
-                                        isVideoOff = isVideoOff && activeAccount?.role == "PATIENT",
-                                        avatarInitials = targetPatient.avatarInitials.ifEmpty { "PT" },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    connectedParticipants.forEachIndexed { index, participant ->
+                                        val isSelf = participant.userId == caller.userId
+                                        ParticipantVideoTile(
+                                            name = if (isSelf) "${participant.name} (You)" else participant.name,
+                                            role = when (participant.role) {
+                                                "PATIENT" -> "PATIENT"
+                                                "CAREGIVER" -> "CARETAKER (${participant.relationship.ifEmpty { "Caregiver" }})"
+                                                "DOCTOR", "MEDICAL_PROFESSIONAL" -> "DOCTOR (${participant.specialty.ifEmpty { "Physician" }})"
+                                                else -> participant.role
+                                            },
+                                            roleColor = when (participant.role) {
+                                                "PATIENT" -> TealAccent
+                                                "CAREGIVER" -> Color(0xFFF59E0B)
+                                                else -> Color(0xFF3B82F6)
+                                            },
+                                            isSpeaking = activeSpeakerIndex == index,
+                                            isMuted = if (isSelf) isMicMuted else false,
+                                            isVideoOff = if (isSelf) isVideoOff else false,
+                                            isSelf = isSelf,
+                                            isFrontCamera = isFrontCamera,
+                                            avatarInitials = participant.avatarInitials.ifEmpty { participant.name.take(2).uppercase() },
+                                            onRemove = if (!isSelf && connectedParticipants.size > 2) {
+                                                { connectedParticipants.remove(participant) }
+                                            } else null,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
 
-                                    ParticipantVideoTile(
-                                        name = linkedCaregiver.name,
-                                        role = "CARETAKER (${linkedCaregiver.relationship.ifEmpty { "Primary Caregiver" }})",
-                                        roleColor = Color(0xFFF59E0B),
-                                        isSpeaking = activeSpeakerIndex == 1,
-                                        isMuted = false,
-                                        isVideoOff = isVideoOff && activeAccount?.role == "CAREGIVER",
-                                        avatarInitials = linkedCaregiver.avatarInitials.ifEmpty { "CG" },
-                                        modifier = Modifier.weight(1f)
-                                    )
-
-                                    ParticipantVideoTile(
-                                        name = assignedDoctor.name,
-                                        role = "DOCTOR (${assignedDoctor.specialty.ifEmpty { "Attending Physician" }})",
-                                        roleColor = Color(0xFF3B82F6),
-                                        isSpeaking = activeSpeakerIndex == 2,
-                                        isMuted = false,
-                                        isVideoOff = isVideoOff && activeAccount?.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL"),
-                                        avatarInitials = assignedDoctor.avatarInitials.ifEmpty { "DR" },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    // Add participant tile if fewer than 4 in call
+                                    if (connectedParticipants.size < 4 && availableToInvite.isNotEmpty()) {
+                                        Card(
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF131D31)),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3E6B)),
+                                            modifier = Modifier
+                                                .width(90.dp)
+                                                .fillMaxHeight()
+                                                .clickable { showAddParticipantDialog = true }
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.fillMaxSize().padding(4.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = Color(0xFF1E3A8A),
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color(0xFF93C5FD), modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text("+ Add", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                Text("Care Team", fontSize = 8.sp, color = SkyLight)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -597,7 +716,7 @@ fun GalleryCaseVideoCallDialog(
                                     allGalleryItems = allGalleryItems,
                                     onSelectCase = { currentCaseItem = it },
                                     onAddPin = { x, y ->
-                                        val author = activeAccount?.name ?: assignedDoctor.name
+                                        val author = activeAccount?.name ?: caller.name
                                         imagePins.add(
                                             ClinicalImagePin(
                                                 xFraction = x,
@@ -618,90 +737,217 @@ fun GalleryCaseVideoCallDialog(
                                         .padding(8.dp),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    MiniParticipantBadge(targetPatient.avatarInitials.ifEmpty { "PT" }, targetPatient.name, TealAccent, activeSpeakerIndex == 0)
-                                    MiniParticipantBadge(linkedCaregiver.avatarInitials.ifEmpty { "CG" }, linkedCaregiver.name, Color(0xFFF59E0B), activeSpeakerIndex == 1)
-                                    MiniParticipantBadge(assignedDoctor.avatarInitials.ifEmpty { "DR" }, assignedDoctor.name, Color(0xFF3B82F6), activeSpeakerIndex == 2)
+                                    connectedParticipants.forEachIndexed { index, participant ->
+                                        MiniParticipantBadge(
+                                            initials = participant.avatarInitials.ifEmpty { participant.name.take(2).uppercase() },
+                                            name = participant.name,
+                                            color = when (participant.role) {
+                                                "PATIENT" -> TealAccent
+                                                "CAREGIVER" -> Color(0xFFF59E0B)
+                                                else -> Color(0xFF3B82F6)
+                                            },
+                                            isSpeaking = activeSpeakerIndex == index
+                                        )
+                                    }
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFF1E3A8A),
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clickable { showAddParticipantDialog = true }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.Add, contentDescription = "Add Participant", tint = Color.White, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
                                 }
                             }
                         }
                         2 -> {
-                            // 3-WAY VIDEO GRID (Large Multi-party Video Layout)
-                            Column(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                // Top Row: Doctor
-                                ParticipantVideoTile(
-                                    name = assignedDoctor.name,
-                                    role = "ATTENDING DOCTOR (${assignedDoctor.specialty.ifEmpty { "Internal Medicine" }})",
-                                    roleColor = Color(0xFF3B82F6),
-                                    isSpeaking = activeSpeakerIndex == 2,
-                                    isMuted = false,
-                                    isVideoOff = isVideoOff && activeAccount?.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL"),
-                                    avatarInitials = assignedDoctor.avatarInitials.ifEmpty { "DR" },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f)
-                                )
+                            // FULL SCREEN VIDEO CALL VIEW (WhatsApp / FaceTime style full-screen camera view)
+                            if (connectedParticipants.size <= 2) {
+                                val selfParticipant = connectedParticipants.find { it.userId == caller.userId } ?: caller
+                                val remoteParticipant = connectedParticipants.find { it.userId != caller.userId } ?: connectedParticipants.firstOrNull() ?: caller
+                                var swapPip by remember { mutableStateOf(false) }
 
-                                // Bottom Row: Patient & Caregiver Side by Side
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                val mainParticipant = if (swapPip) selfParticipant else remoteParticipant
+                                val pipParticipant = if (swapPip) remoteParticipant else selfParticipant
+                                val isMainSelf = mainParticipant.userId == caller.userId
+                                val isPipSelf = pipParticipant.userId == caller.userId
+
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    // 1. FULL SCREEN PRIMARY VIDEO FEED
+                                    ParticipantVideoTile(
+                                        name = if (isMainSelf) "${mainParticipant.name} (You)" else mainParticipant.name,
+                                        role = when (mainParticipant.role) {
+                                            "PATIENT" -> "PATIENT"
+                                            "CAREGIVER" -> "CARETAKER (${mainParticipant.relationship.ifEmpty { "Primary Caregiver" }})"
+                                            else -> "DOCTOR (${mainParticipant.specialty.ifEmpty { "Attending Physician" }})"
+                                        },
+                                        roleColor = when (mainParticipant.role) {
+                                            "PATIENT" -> TealAccent
+                                            "CAREGIVER" -> Color(0xFFF59E0B)
+                                            else -> Color(0xFF3B82F6)
+                                        },
+                                        isSpeaking = true,
+                                        isMuted = if (isMainSelf) isMicMuted else false,
+                                        isVideoOff = if (isMainSelf) isVideoOff else false,
+                                        isSelf = isMainSelf,
+                                        isFrontCamera = isFrontCamera,
+                                        avatarInitials = mainParticipant.avatarInitials.ifEmpty { mainParticipant.name.take(2).uppercase() },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+
+                                    // 2. FLOATING PICTURE-IN-PICTURE (PIP) FRONT CAMERA / SECONDARY STREAM
+                                    if (connectedParticipants.size >= 2 || isPipSelf) {
+                                        Card(
+                                            shape = RoundedCornerShape(16.dp),
+                                            border = androidx.compose.foundation.BorderStroke(2.dp, TealAccent.copy(alpha = 0.8f)),
+                                            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(top = 12.dp, end = 12.dp)
+                                                .width(110.dp)
+                                                .height(155.dp)
+                                                .clickable { swapPip = !swapPip }
+                                        ) {
+                                            Box(modifier = Modifier.fillMaxSize()) {
+                                                ParticipantVideoTile(
+                                                    name = if (isPipSelf) "You" else pipParticipant.name,
+                                                    role = pipParticipant.role,
+                                                    roleColor = if (pipParticipant.role == "PATIENT") TealAccent else Color(0xFF3B82F6),
+                                                    isSpeaking = false,
+                                                    isMuted = if (isPipSelf) isMicMuted else false,
+                                                    isVideoOff = if (isPipSelf) isVideoOff else false,
+                                                    isSelf = isPipSelf,
+                                                    isFrontCamera = isFrontCamera,
+                                                    avatarInitials = pipParticipant.avatarInitials.ifEmpty { pipParticipant.name.take(2).uppercase() },
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                                // Tap swap indicator badge
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = Color.Black.copy(alpha = 0.6f),
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(6.dp)
+                                                        .size(24.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(Icons.Default.SwapHoriz, contentDescription = "Swap Video View", tint = Color.White, modifier = Modifier.size(14.dp))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // 3 or more participants grid
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    ParticipantVideoTile(
-                                        name = targetPatient.name,
-                                        role = "PATIENT (Eleanor)",
-                                        roleColor = TealAccent,
-                                        isSpeaking = activeSpeakerIndex == 0,
-                                        isMuted = false,
-                                        isVideoOff = isVideoOff && activeAccount?.role == "PATIENT",
-                                        avatarInitials = targetPatient.avatarInitials.ifEmpty { "PT" },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    // Row 1: First 2 participants
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        connectedParticipants.take(2).forEachIndexed { index, participant ->
+                                            val isSelf = participant.userId == caller.userId
+                                            ParticipantVideoTile(
+                                                name = if (isSelf) "${participant.name} (You)" else participant.name,
+                                                role = participant.role,
+                                                roleColor = if (participant.role == "PATIENT") TealAccent else if (participant.role == "CAREGIVER") Color(0xFFF59E0B) else Color(0xFF3B82F6),
+                                                isSpeaking = activeSpeakerIndex == index,
+                                                isMuted = if (isSelf) isMicMuted else false,
+                                                isVideoOff = if (isSelf) isVideoOff else false,
+                                                isSelf = isSelf,
+                                                isFrontCamera = isFrontCamera,
+                                                avatarInitials = participant.avatarInitials.ifEmpty { participant.name.take(2).uppercase() },
+                                                onRemove = if (!isSelf && connectedParticipants.size > 2) {
+                                                    { connectedParticipants.remove(participant) }
+                                                } else null,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
 
-                                    ParticipantVideoTile(
-                                        name = linkedCaregiver.name,
-                                        role = "CARETAKER (James)",
-                                        roleColor = Color(0xFFF59E0B),
-                                        isSpeaking = activeSpeakerIndex == 1,
-                                        isMuted = false,
-                                        isVideoOff = isVideoOff && activeAccount?.role == "CAREGIVER",
-                                        avatarInitials = linkedCaregiver.avatarInitials.ifEmpty { "CG" },
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    // Row 2: Remaining participants
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        connectedParticipants.drop(2).forEachIndexed { dropIndex, participant ->
+                                            val actualIndex = dropIndex + 2
+                                            val isSelf = participant.userId == caller.userId
+                                            ParticipantVideoTile(
+                                                name = if (isSelf) "${participant.name} (You)" else participant.name,
+                                                role = participant.role,
+                                                roleColor = if (participant.role == "PATIENT") TealAccent else if (participant.role == "CAREGIVER") Color(0xFFF59E0B) else Color(0xFF3B82F6),
+                                                isSpeaking = activeSpeakerIndex == actualIndex,
+                                                isMuted = if (isSelf) isMicMuted else false,
+                                                isVideoOff = if (isSelf) isVideoOff else false,
+                                                isSelf = isSelf,
+                                                isFrontCamera = isFrontCamera,
+                                                avatarInitials = participant.avatarInitials.ifEmpty { participant.name.take(2).uppercase() },
+                                                onRemove = if (!isSelf && connectedParticipants.size > 2) {
+                                                    { connectedParticipants.remove(participant) }
+                                                } else null,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+
+                                        if (connectedParticipants.size % 2 != 0 && availableToInvite.isNotEmpty()) {
+                                            Card(
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = CardDefaults.cardColors(containerColor = Color(0xFF131D31)),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C3E6B)),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .fillMaxHeight()
+                                                    .clickable { showAddParticipantDialog = true }
+                                            ) {
+                                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Icon(Icons.Default.GroupAdd, contentDescription = null, tint = Color(0xFF93C5FD), modifier = Modifier.size(28.dp))
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        Text("+ Add Caregiver / Doctor", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
 
                     // In-Call Chat Drawer Overlay (Slide-in)
-                    AnimatedVisibility(
-                        visible = showChatDrawer,
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(0.92f)
-                            .align(Alignment.CenterEnd)
-                    ) {
-                        InCallChatDrawer(
-                            messages = chatMessages,
-                            currentAccount = activeAccount,
-                            onSendMessage = { text ->
-                                val sender = activeAccount?.name ?: "Dr. Sarah Jenkins"
-                                val role = activeAccount?.role ?: "DOCTOR"
-                                chatMessages.add(
-                                    VideoCallChatMessage(
-                                        senderName = sender,
-                                        senderRole = role,
-                                        text = text,
-                                        timeFormatted = "Just now"
+                    if (showChatDrawer) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(0.92f)
+                                .align(Alignment.CenterEnd)
+                        ) {
+                            InCallChatDrawer(
+                                messages = chatMessages,
+                                currentAccount = activeAccount,
+                                onSendMessage = { text ->
+                                    val sender = activeAccount?.name ?: caller.name
+                                    val role = activeAccount?.role ?: "DOCTOR"
+                                    chatMessages.add(
+                                        VideoCallChatMessage(
+                                            senderName = sender,
+                                            senderRole = role,
+                                            text = text,
+                                            timeFormatted = "Just now"
+                                        )
                                     )
-                                )
-                            },
-                            onClose = { showChatDrawer = false }
-                        )
+                                },
+                                onClose = { showChatDrawer = false }
+                            )
+                        }
                     }
                 }
 
@@ -755,12 +1001,12 @@ fun GalleryCaseVideoCallDialog(
                                 Button(
                                     onClick = {
                                         if (inputDoctorDirective.isNotBlank()) {
-                                            viewModel.addAlertNote(
+                                            viewModel.sendCaregiverSpecialInstruction(
+                                                targetPatientId = targetPatient.userId,
+                                                targetPatientName = targetPatient.name,
                                                 title = "Gallery Consultation Directive (${currentCaseItem?.title ?: "Clinical Photo"})",
                                                 message = inputDoctorDirective.trim(),
-                                                priority = "HIGH",
-                                                category = "CARE_PLAN",
-                                                preselectedPatientId = targetPatient.userId
+                                                severity = "HIGH"
                                             )
                                             chatMessages.add(
                                                 VideoCallChatMessage(
@@ -806,7 +1052,7 @@ fun GalleryCaseVideoCallDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -846,6 +1092,16 @@ fun GalleryCaseVideoCallDialog(
                                 isFrontCamera = !isFrontCamera
                                 Toast.makeText(context, if (isFrontCamera) "Switched to Front Camera" else "Switched to Rear Camera", Toast.LENGTH_SHORT).show()
                             }
+                        )
+
+                        // Add Participant from Dropdown
+                        ControlButton(
+                            icon = Icons.Default.PersonAdd,
+                            label = "+ Add",
+                            isActive = availableToInvite.isNotEmpty(),
+                            activeColor = Color(0xFF1E3A8A),
+                            badgeCount = availableToInvite.size,
+                            onClick = { showAddParticipantDialog = true }
                         )
 
                         // In-Call Chat Drawer Toggle
@@ -893,14 +1149,132 @@ fun GalleryCaseVideoCallDialog(
         }
     }
 
+    // Modal Dialog: Add Participant from Care Team Dropdown / Picker
+    if (showAddParticipantDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddParticipantDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.GroupAdd, contentDescription = null, tint = TealAccent, modifier = Modifier.size(22.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Add Participant to Video Call", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "Currently in call: ${connectedParticipants.joinToString { it.name }}",
+                        fontSize = 12.sp,
+                        color = Color.LightGray,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    if (availableToInvite.isEmpty()) {
+                        Text(
+                            "All care team members (Patient, Caregiver, and Doctors) are already connected in this consultation.",
+                            fontSize = 13.sp,
+                            color = Color.White
+                        )
+                    } else {
+                        Text("Select a person from the dropdown list to add:", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(availableToInvite) { user ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF1E293B),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            connectedParticipants.add(user)
+                                            chatMessages.add(
+                                                VideoCallChatMessage(
+                                                    senderName = "System",
+                                                    senderRole = "SYSTEM",
+                                                    text = "👤 ${user.name} (${user.role}) was added to the video call.",
+                                                    timeFormatted = "Just now"
+                                                )
+                                            )
+                                            viewModel.logAuditAction(
+                                                actionType = "VIDEO_PARTICIPANT_ADDED",
+                                                category = "TELEHEALTH VIDEO",
+                                                description = "Added ${user.name} (${user.role}) to ongoing video consultation.",
+                                                details = "Invited by: ${caller.name}",
+                                                severity = "SUCCESS"
+                                            )
+                                            Toast.makeText(context, "${user.name} connected to the call.", Toast.LENGTH_SHORT).show()
+                                            showAddParticipantDialog = false
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    when (user.role) {
+                                                        "PATIENT" -> TealAccent.copy(alpha = 0.25f)
+                                                        "CAREGIVER" -> Color(0xFFF59E0B).copy(alpha = 0.25f)
+                                                        else -> Color(0xFF3B82F6).copy(alpha = 0.25f)
+                                                    }
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = user.avatarInitials.ifEmpty { user.name.take(2).uppercase() },
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = Color.White
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(user.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                                            Text(
+                                                when (user.role) {
+                                                    "PATIENT" -> "Patient (Primary Chart)"
+                                                    "CAREGIVER" -> "Caregiver (${user.relationship.ifEmpty { "Family Caregiver" }})"
+                                                    else -> "Doctor (${user.specialty.ifEmpty { "Medical Staff" }})"
+                                                },
+                                                fontSize = 11.sp,
+                                                color = when (user.role) {
+                                                    "PATIENT" -> TealAccent
+                                                    "CAREGIVER" -> Color(0xFFF59E0B)
+                                                    else -> Color(0xFF60A5FA)
+                                                }
+                                            )
+                                        }
+                                        Icon(Icons.Default.Add, contentDescription = "Add", tint = TealAccent, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAddParticipantDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
     // Confirmation Dialog to End Call
     if (showEndCallConfirm) {
         AlertDialog(
             onDismissRequest = { showEndCallConfirm = false },
-            title = { Text("End Multi-Party Video Consultation?", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            title = { Text("End Video Consultation?", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
             text = {
                 Text(
-                    "You are about to leave the live case discussion for ${targetPatient.name}. Total session duration: $formattedDuration. A record of this consultation will be saved in the system audit trail.",
+                    "You are about to leave the live case discussion. Total session duration: $formattedDuration. A record of this consultation will be saved in the system audit trail.",
                     fontSize = 13.sp
                 )
             },
@@ -910,8 +1284,8 @@ fun GalleryCaseVideoCallDialog(
                         viewModel.logAuditAction(
                             actionType = "VIDEO_CALL_END",
                             category = "TELEHEALTH VIDEO",
-                            description = "Completed 3-way Gallery Video Consultation for ${targetPatient.name} (Duration: $formattedDuration).",
-                            details = "Participants: Patient ${targetPatient.name}, Caregiver ${linkedCaregiver.name}, Doctor ${assignedDoctor.name}. Case: ${currentCaseItem?.title}",
+                            description = "Completed Gallery Video Consultation (Duration: $formattedDuration).",
+                            details = "Participants: ${connectedParticipants.joinToString { it.name }}. Case: ${currentCaseItem?.title}",
                             severity = "SUCCESS"
                         )
                         showEndCallConfirm = false
@@ -984,7 +1358,7 @@ private fun SharedCaseDisplay(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${caseItem?.category ?: "Clinical Record"} • ${caseItem?.dateFormatted ?: "Today"}",
+                            text = "${caseItem?.category ?: "Clinical Record"} • ${caseItem?.formattedDate ?: "Today"}",
                             fontSize = 10.sp,
                             color = SkyLight
                         )
@@ -1161,8 +1535,96 @@ private fun SharedCaseDisplay(
     }
 }
 
+@Composable
+private fun LiveCameraPreview(
+    isFrontCamera: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCameraPermission = isGranted
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    if (hasCameraPermission) {
+        AndroidView(
+            factory = { ctx ->
+                val previewView = PreviewView(ctx).apply {
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                }
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                cameraProviderFuture.addListener({
+                    try {
+                        val cameraProvider = cameraProviderFuture.get()
+                        val preview = Preview.Builder().build().also {
+                            it.setSurfaceProvider(previewView.surfaceProvider)
+                        }
+                        val cameraSelector = if (isFrontCamera) {
+                            CameraSelector.DEFAULT_FRONT_CAMERA
+                        } else {
+                            CameraSelector.DEFAULT_BACK_CAMERA
+                        }
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            cameraSelector,
+                            preview
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }, ContextCompat.getMainExecutor(ctx))
+                previewView
+            },
+            update = { previewView ->
+                val cameraProviderFuture = ProcessCameraProvider.getInstance(previewView.context)
+                cameraProviderFuture.addListener({
+                    try {
+                        val cameraProvider = cameraProviderFuture.get()
+                        val preview = Preview.Builder().build().also {
+                            it.setSurfaceProvider(previewView.surfaceProvider)
+                        }
+                        val cameraSelector = if (isFrontCamera) {
+                            CameraSelector.DEFAULT_FRONT_CAMERA
+                        } else {
+                            CameraSelector.DEFAULT_BACK_CAMERA
+                        }
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            cameraSelector,
+                            preview
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }, ContextCompat.getMainExecutor(previewView.context))
+            },
+            modifier = modifier
+        )
+    }
+}
+
 /**
- * Single Video Stream Tile with Animated Speaking Indicator & Avatar
+ * Single Video Stream Tile with Animated Speaking Indicator, Live Camera Simulation & Audio Equalizer
  */
 @Composable
 private fun ParticipantVideoTile(
@@ -1173,6 +1635,9 @@ private fun ParticipantVideoTile(
     isMuted: Boolean,
     isVideoOff: Boolean,
     avatarInitials: String,
+    isSelf: Boolean = false,
+    isFrontCamera: Boolean = true,
+    onRemove: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition()
@@ -1185,9 +1650,35 @@ private fun ParticipantVideoTile(
         )
     )
 
+    // Animated Ambient Lighting & Scanline effect for realistic live camera simulation
+    val ambientPulse by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        )
+    )
+
+    val eqBar1 by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = if (isSpeaking) 0.95f else 0.2f,
+        animationSpec = infiniteRepeatable(animation = tween(250, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse)
+    )
+    val eqBar2 by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = if (isSpeaking) 1.0f else 0.15f,
+        animationSpec = infiniteRepeatable(animation = tween(320, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse)
+    )
+    val eqBar3 by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = if (isSpeaking) 0.85f else 0.25f,
+        animationSpec = infiniteRepeatable(animation = tween(200, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse)
+    )
+
     Card(
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF111D36)),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F1A2E)),
         border = androidx.compose.foundation.BorderStroke(
             if (isSpeaking) 2.dp else 1.dp,
             if (isSpeaking) HealthNormalGreen else Color(0xFF24365A)
@@ -1197,35 +1688,84 @@ private fun ParticipantVideoTile(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             if (!isVideoOff) {
-                // High-fidelity Simulated Video Feed Background with subtle gradient
+                if (isSelf) {
+                    // Live Local Device Camera Stream (Default Front Camera as in WhatsApp)
+                    LiveCameraPreview(
+                        isFrontCamera = isFrontCamera,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // High-fidelity Camera Feed Framing / Visual Overlay
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF1B2A4A),
-                                    Color(0xFF0F1A2E)
+                            if (isSelf) {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0x22000000),
+                                        Color(0x44000000)
+                                    )
                                 )
-                            )
+                            } else {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF1E2D4A).copy(alpha = ambientPulse),
+                                        Color(0xFF0D1728)
+                                    )
+                                )
+                            }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Avatar with speaking wave
-                    Box(
-                        modifier = Modifier
-                            .size((52 * waveScale).dp)
-                            .clip(CircleShape)
-                            .background(roleColor.copy(alpha = 0.25f))
-                            .border(2.dp, if (isSpeaking) HealthNormalGreen else roleColor, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = avatarInitials,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+                    // Face Detection / Telehealth Framing Guide Reticles
+                    Canvas(modifier = Modifier.size(90.dp)) {
+                        val stroke = 1.5.dp.toPx()
+                        val bracketLen = 14.dp.toPx()
+                        val color = if (isSpeaking) HealthNormalGreen.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.2f)
+
+                        // Top-left corner
+                        drawLine(color, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(bracketLen, 0f), stroke)
+                        drawLine(color, androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(0f, bracketLen), stroke)
+
+                        // Top-right corner
+                        drawLine(color, androidx.compose.ui.geometry.Offset(size.width, 0f), androidx.compose.ui.geometry.Offset(size.width - bracketLen, 0f), stroke)
+                        drawLine(color, androidx.compose.ui.geometry.Offset(size.width, 0f), androidx.compose.ui.geometry.Offset(size.width, bracketLen), stroke)
+
+                        // Bottom-left corner
+                        drawLine(color, androidx.compose.ui.geometry.Offset(0f, size.height), androidx.compose.ui.geometry.Offset(bracketLen, size.height), stroke)
+                        drawLine(color, androidx.compose.ui.geometry.Offset(0f, size.height), androidx.compose.ui.geometry.Offset(0f, size.height - bracketLen), stroke)
+
+                        // Bottom-right corner
+                        drawLine(color, androidx.compose.ui.geometry.Offset(size.width, size.height), androidx.compose.ui.geometry.Offset(size.width - bracketLen, size.height), stroke)
+                        drawLine(color, androidx.compose.ui.geometry.Offset(size.width, size.height), androidx.compose.ui.geometry.Offset(size.width, size.height - bracketLen), stroke)
+                    }
+
+                    // Avatar Circle with live glow & ripple (shown for remote feeds or fallback)
+                    if (!isSelf) {
+                        Box(
+                            modifier = Modifier
+                                .size((54 * waveScale).dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            roleColor.copy(alpha = 0.4f),
+                                            Color(0xFF1E293B)
+                                        )
+                                    )
+                                )
+                                .border(2.dp, if (isSpeaking) HealthNormalGreen else roleColor, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = avatarInitials,
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             } else {
@@ -1233,25 +1773,26 @@ private fun ParticipantVideoTile(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0xFF0A0F1D)),
+                        .background(Color(0xFF090D1A)),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.VideocamOff, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text("Camera Off", fontSize = 10.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text("Camera Paused", fontSize = 10.sp, color = Color.Gray)
                     }
                 }
             }
 
-            // Top Status Badges: Mic & Speaking Status
+            // Top Status Bar: Stream Tag, Speaking / Equalizer, Mute & Optional Remove
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(6.dp),
+                    .padding(5.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Left: Live Stream Badge / Speaking Equalizer
                 if (isSpeaking) {
                     Surface(
                         shape = RoundedCornerShape(4.dp),
@@ -1263,38 +1804,81 @@ private fun ParticipantVideoTile(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(6.dp)
+                                    .size(5.dp)
                                     .clip(CircleShape)
                                     .background(HealthNormalGreen)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
-                            Text("Speaking", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = HealthNormalGreen)
+                            // Equalizer Mini Bars
+                            Row(
+                                modifier = Modifier.height(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                Box(modifier = Modifier.width(2.dp).height((8 * eqBar1).dp).background(HealthNormalGreen))
+                                Box(modifier = Modifier.width(2.dp).height((8 * eqBar2).dp).background(HealthNormalGreen))
+                                Box(modifier = Modifier.width(2.dp).height((8 * eqBar3).dp).background(HealthNormalGreen))
+                            }
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("LIVE", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = HealthNormalGreen)
                         }
                     }
                 } else {
-                    Spacer(modifier = Modifier.width(1.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0x66000000)
+                    ) {
+                        Text(
+                            text = if (isSelf) "LOCAL HD" else "STREAM HD",
+                            fontSize = 7.5.sp,
+                            color = Color(0xFFCBD5E1),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                        )
+                    }
                 }
 
-                Surface(
-                    shape = CircleShape,
-                    color = if (isMuted) HealthCriticalRed else Color(0x88000000),
-                    modifier = Modifier.size(20.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(11.dp)
-                        )
+                // Right: Mute indicator & Optional Remove button
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    if (onRemove != null) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0x88000000),
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { onRemove() }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove participant",
+                                    tint = Color.LightGray,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isMuted) HealthCriticalRed else Color(0x88000000),
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            // Bottom Name and Role Badge
+            // Bottom Name, Self Tag and Role Badge
             Surface(
                 shape = RoundedCornerShape(topStart = 8.dp),
-                color = Color(0xDD000000),
+                color = Color(0xEE000000),
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()

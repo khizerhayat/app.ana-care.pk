@@ -4,6 +4,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.entities.AppConfigEntity
 import com.example.data.local.entities.AppointmentEntity
 import com.example.data.local.entities.AuditLogEntity
+import com.example.data.local.entities.CallLogEntity
 import com.example.data.local.entities.DailyActivityEntity
 import com.example.data.local.entities.EncryptedMessageEntity
 import com.example.data.local.entities.LabResultEntity
@@ -31,6 +32,7 @@ class HealthPortalRepository(private val database: AppDatabase) {
     private val labResultDao = database.labResultDao()
     private val appointmentDao = database.appointmentDao()
     private val encryptedMessageDao = database.encryptedMessageDao()
+    private val callLogDao = database.callLogDao()
     private val patientAlertNoteDao = database.patientAlertNoteDao()
     private val appConfigDao = database.appConfigDao()
     private val medicalGalleryDao = database.medicalGalleryDao()
@@ -44,6 +46,21 @@ class HealthPortalRepository(private val database: AppDatabase) {
     val allVitals: Flow<List<VitalSignEntity>> = vitalSignDao.getAllVitals()
     val allGallery: Flow<List<MedicalGalleryEntity>> = medicalGalleryDao.getAllGallery()
     val allAuditLogs: Flow<List<AuditLogEntity>> = auditLogDao.getAllLogs()
+
+    fun getAllCallLogsForUser(userId: String): Flow<List<CallLogEntity>> =
+        callLogDao.getAllCallLogsForUser(userId)
+
+    fun getMissedCallLogsForUser(userId: String): Flow<List<CallLogEntity>> =
+        callLogDao.getMissedCallLogsForUser(userId)
+
+    suspend fun logCall(callLog: CallLogEntity): Long =
+        callLogDao.insertCallLog(callLog)
+
+    suspend fun deleteCallLog(id: Long) =
+        callLogDao.deleteCallLog(id)
+
+    suspend fun clearAllCallLogs(userId: String) =
+        callLogDao.clearAllCallLogsForUser(userId)
 
     fun getAuditLogsForUser(userId: String): Flow<List<AuditLogEntity>> =
         if (userId == "ALL") auditLogDao.getAllLogs() else auditLogDao.getLogsForUser(userId)
@@ -434,7 +451,7 @@ class HealthPortalRepository(private val database: AppDatabase) {
         attachmentName: String? = null,
         attachmentType: String? = null,
         attachmentSize: String? = null
-    ): Long {
+    ): EncryptedMessageEntity {
         val cipherDigest = SecurityManager.encrypt(messageText)
         val entity = EncryptedMessageEntity(
             senderId = senderId,
@@ -451,7 +468,8 @@ class HealthPortalRepository(private val database: AppDatabase) {
             attachmentSize = attachmentSize,
             isRead = false
         )
-        return encryptedMessageDao.insertMessage(entity)
+        val id = encryptedMessageDao.insertMessage(entity)
+        return entity.copy(id = id)
     }
 
     suspend fun markMessagesAsRead(userId: String, peerId: String) {
@@ -1102,6 +1120,10 @@ class HealthPortalRepository(private val database: AppDatabase) {
             // Seed Initial Audit Logs
             val initialAuditLogs = DummyDataSeeder.generateInitialAuditLogs(now)
             auditLogDao.insertAll(initialAuditLogs)
+
+            // Seed Initial Call Logs
+            val initialCallLogs = DummyDataSeeder.generateInitialCallLogs(now)
+            callLogDao.insertAll(initialCallLogs)
         }
     }
 

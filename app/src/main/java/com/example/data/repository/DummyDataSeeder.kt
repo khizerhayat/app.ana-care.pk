@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.local.entities.AppointmentEntity
 import com.example.data.local.entities.AuditLogEntity
+import com.example.data.local.entities.CallLogEntity
 import com.example.data.local.entities.DailyActivityEntity
 import com.example.data.local.entities.LabResultEntity
 import com.example.data.local.entities.MedicationEntity
@@ -881,6 +882,111 @@ object DummyDataSeeder {
                 description = "Reviewed lipid profile and confirmed Atorvastatin 20mg continuation.",
                 details = "TargetPatientId: 21001001, LabTest: Lipid Profile Panel, Status: ELEVATED",
                 severity = "INFO"
+            )
+        )
+    }
+
+    fun generateInitialCallLogs(now: Long): List<CallLogEntity> {
+        val min = 60 * 1000L
+        val hour = 60 * min
+        val day = 24 * hour
+
+        return listOf(
+            // Missed Video Consultation from Dr. Sarah Jenkins
+            CallLogEntity(
+                callerId = "1001",
+                callerName = "Dr. Sarah Jenkins, MD",
+                callerRole = "DOCTOR",
+                callerAvatar = "SJ",
+                recipientId = "21001001",
+                recipientName = "Pt. Eleanor Vance",
+                recipientRole = "PATIENT",
+                recipientAvatar = "EV",
+                callType = "VIDEO",
+                callDirection = "MISSED",
+                timestamp = now - 25 * min,
+                durationSeconds = 0,
+                caseTitle = "Morning Telehealth Check-in & BP Review"
+            ),
+            // Received Audio Call from Caregiver James Vance
+            CallLogEntity(
+                callerId = "3001",
+                callerName = "James Vance",
+                callerRole = "CAREGIVER",
+                callerAvatar = "JV",
+                recipientId = "21001001",
+                recipientName = "Pt. Eleanor Vance",
+                recipientRole = "PATIENT",
+                recipientAvatar = "EV",
+                callType = "AUDIO",
+                callDirection = "RECEIVED",
+                timestamp = now - 3 * hour,
+                durationSeconds = 254, // 4m 14s
+                caseTitle = null
+            ),
+            // Dialed Video Call to Dr. Robert Chen (Cardiologist)
+            CallLogEntity(
+                callerId = "21001001",
+                callerName = "Pt. Eleanor Vance",
+                callerRole = "PATIENT",
+                callerAvatar = "EV",
+                recipientId = "1002",
+                recipientName = "Dr. Robert Chen, MD",
+                recipientRole = "DOCTOR",
+                recipientAvatar = "RC",
+                callType = "VIDEO",
+                callDirection = "DIALED",
+                timestamp = now - 1 * day - 2 * hour,
+                durationSeconds = 582, // 9m 42s
+                caseTitle = "Post-Op Knee Dressing Healing Progress"
+            ),
+            // Missed Audio Call from Caregiver James Vance
+            CallLogEntity(
+                callerId = "3001",
+                callerName = "James Vance",
+                callerRole = "CAREGIVER",
+                callerAvatar = "JV",
+                recipientId = "21001001",
+                recipientName = "Pt. Eleanor Vance",
+                recipientRole = "PATIENT",
+                recipientAvatar = "EV",
+                callType = "AUDIO",
+                callDirection = "MISSED",
+                timestamp = now - 1 * day - 6 * hour,
+                durationSeconds = 0,
+                caseTitle = null
+            ),
+            // Received Video Call from Dr. Sarah Jenkins (Comprehensive Review)
+            CallLogEntity(
+                callerId = "1001",
+                callerName = "Dr. Sarah Jenkins, MD",
+                callerRole = "DOCTOR",
+                callerAvatar = "SJ",
+                recipientId = "21001001",
+                recipientName = "Pt. Eleanor Vance",
+                recipientRole = "PATIENT",
+                recipientAvatar = "EV",
+                callType = "VIDEO",
+                callDirection = "RECEIVED",
+                timestamp = now - 2 * day - 4 * hour,
+                durationSeconds = 876, // 14m 36s
+                caseTitle = "Lisinopril 10mg Prescription Bottle Label"
+            ),
+            // Dialed Audio Call to Caregiver James Vance
+            CallLogEntity(
+                callerId = "21001001",
+                callerName = "Pt. Eleanor Vance",
+                callerRole = "PATIENT",
+                callerAvatar = "EV",
+                recipientId = "3001",
+                recipientName = "James Vance",
+                recipientRole = "CAREGIVER",
+                recipientAvatar = "JV",
+                callType = "AUDIO",
+                callDirection = "DIALED",
+                timestamp = now - 3 * day,
+                durationSeconds = 180, // 3m 00s
+                caseTitle = null
             )
         )
     }

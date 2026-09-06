@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Biotech
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
@@ -54,6 +55,9 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.components.AddMultiUserDialog
 import com.example.ui.components.AnaCareHeader
 import com.example.ui.components.BiometricDialog
+import com.example.ui.components.GalleryCaseVideoCallDialog
+import com.example.ui.components.IncomingCallRingingDialog
+import com.example.ui.components.OutgoingCallDialingDialog
 import com.example.ui.components.MfaVerificationDialog
 import com.example.ui.components.PatientAlertPopupDialog
 import com.example.ui.components.PdfPreviewDialog
@@ -67,6 +71,7 @@ import com.example.ui.theme.NavyPrimary
 import com.example.ui.theme.NavySecondary
 import com.example.ui.theme.SkyLight
 import com.example.ui.theme.TealAccent
+import com.example.ui.viewmodel.CallStatus
 import com.example.ui.viewmodel.MainTab
 import com.example.ui.viewmodel.PortalViewModel
 import kotlinx.coroutines.flow.collectLatest
@@ -83,9 +88,11 @@ fun MainPortalScreen(
     val activeAccount by viewModel.activeAccount.collectAsState()
     val allAccounts by viewModel.allAccounts.collectAsState()
     val unreadMessageCount by viewModel.unreadMessageCount.collectAsState()
+    val missedCallCount by viewModel.missedCallCount.collectAsState()
     val appConfig by viewModel.appConfig.collectAsState()
     val currentAlertPopup by viewModel.currentAlertPopup.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val isCloudConnected by viewModel.isCloudConnected.collectAsState()
 
     // Dialog state collectors
     val showBiometricDialog by viewModel.showBiometricDialog.collectAsState()
@@ -94,6 +101,7 @@ fun MainPortalScreen(
     val showUserSwitcherDialog by viewModel.showUserSwitcherDialog.collectAsState()
     val showAddMultiUserDialog by viewModel.showAddMultiUserDialog.collectAsState()
     val pdfExportedFile by viewModel.pdfExportedFile.collectAsState()
+    val activeCallSession by viewModel.activeCallSession.collectAsState()
 
     val isDoctor = activeAccount?.role == "MEDICAL_PROFESSIONAL"
     val isAdmin = activeAccount?.role == "ADMIN"
@@ -117,7 +125,9 @@ fun MainPortalScreen(
             Column {
                 AnaCareHeader(
                     activeAccount = activeAccount,
+                    allAccounts = allAccounts,
                     isDarkMode = isDarkMode,
+                    isCloudConnected = isCloudConnected,
                     onToggleDarkMode = { viewModel.toggleDarkMode() },
                     onProfileClick = { viewModel.setMainTab(MainTab.PROFILE_SETTINGS) },
                     onOpenAccountSwitcher = { viewModel.setShowUserSwitcherDialog(true) },
@@ -674,6 +684,7 @@ fun MainPortalScreen(
                     MainTab.LAB_RESULTS -> LabResultsScreen(viewModel = viewModel)
                     MainTab.APPOINTMENTS -> AppointmentsScreen(viewModel = viewModel)
                     MainTab.MESSAGING -> SecureMessagingScreen(viewModel = viewModel)
+                    MainTab.CALLS -> CallsScreen(viewModel = viewModel)
                     MainTab.PROFILE_SETTINGS -> ProfileSettingsScreen(viewModel = viewModel)
                 }
             }
@@ -749,5 +760,39 @@ fun MainPortalScreen(
                 }
             }
         )
+    }
+
+    // Telehealth Active Call Session Handler (Incoming Ringing Screen or Active Consultation)
+    activeCallSession?.let { call ->
+        val currentUserId = activeAccount?.userId
+        if (call.status == CallStatus.RINGING) {
+            if (call.recipient.userId == currentUserId) {
+                // Incoming Call Ringing Pop-up for the Recipient (Doctor / Patient / Caregiver)
+                IncomingCallRingingDialog(
+                    callSession = call,
+                    onAccept = { viewModel.acceptIncomingCall() },
+                    onDecline = { viewModel.declineIncomingCall() }
+                )
+            } else if (call.caller.userId == currentUserId) {
+                // Outgoing Dialing Screen for the Caller (Shows ringing animation, allows simulation or switching profile)
+                OutgoingCallDialingDialog(
+                    callSession = call,
+                    onCancel = { viewModel.endVideoCall() },
+                    onSimulateAnswer = { viewModel.acceptIncomingCall() },
+                    onSwitchToRecipient = {
+                        // Switch active user to recipient to test answering from their perspective
+                        viewModel.switchAccount(call.recipient.userId)
+                    }
+                )
+            }
+        } else if (call.status == CallStatus.CONNECTED) {
+            // Live Video Consultation Dialog
+            GalleryCaseVideoCallDialog(
+                viewModel = viewModel,
+                onDismiss = { viewModel.endVideoCall() },
+                initialGalleryItem = call.caseItem,
+                initialTargetParticipant = if (call.caller.userId == currentUserId) call.recipient else call.caller
+            )
+        }
     }
 }

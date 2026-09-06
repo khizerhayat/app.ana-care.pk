@@ -25,20 +25,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -65,10 +67,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entities.EncryptedMessageEntity
+import com.example.data.local.entities.UserAccountEntity
 import com.example.ui.theme.HealthNormalGreen
 import com.example.ui.theme.NavyDark
 import com.example.ui.theme.NavyPrimary
-import com.example.ui.theme.NavySecondary
 import com.example.ui.theme.SkyLight
 import com.example.ui.theme.TealAccent
 import com.example.ui.viewmodel.PortalViewModel
@@ -83,28 +85,107 @@ fun SecureMessagingScreen(
 ) {
     val messages by viewModel.messagesList.collectAsState()
     val activeUser by viewModel.activeAccount.collectAsState()
+    val allAccounts by viewModel.allAccounts.collectAsState()
+    val galleryItems by viewModel.galleryList.collectAsState()
     val listState = rememberLazyListState()
 
-    val sortedMessages = remember(messages) { messages.sortedByDescending { it.timestamp } }
+    // Candidate contacts to chat with - strictly patient, doctor, or caregiver links
+    val candidateContacts = remember(allAccounts, activeUser) {
+        val current = activeUser ?: return@remember emptyList()
+        val currentId = current.userId
+        when (current.role) {
+            "PATIENT" -> {
+                allAccounts.filter {
+                    it.userId != currentId &&
+                    (it.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL") || it.role == "CAREGIVER")
+                }
+            }
+            "DOCTOR", "MEDICAL_PROFESSIONAL" -> {
+                allAccounts.filter {
+                    it.userId != currentId &&
+                    (it.role == "PATIENT" || it.role == "CAREGIVER")
+                }
+            }
+            "CAREGIVER" -> {
+                allAccounts.filter {
+                    it.userId != currentId &&
+                    (it.role == "PATIENT" || it.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL"))
+                }
+            }
+            else -> {
+                allAccounts.filter { it.userId != currentId }
+            }
+        }
+    }
+
+    var selectedContact by remember { mutableStateOf<UserAccountEntity?>(null) }
+    var showContactPicker by remember { mutableStateOf(false) }
+
+    // Initialize or adapt selected contact when accounts load
+    LaunchedEffect(candidateContacts, activeUser) {
+        if (selectedContact == null || candidateContacts.none { it.userId == selectedContact?.userId }) {
+            selectedContact = if (activeUser?.role == "PATIENT") {
+                candidateContacts.find { it.userId == activeUser?.assignedDoctorId }
+                    ?: candidateContacts.find { it.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL") }
+                    ?: candidateContacts.firstOrNull()
+            } else if (activeUser?.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL")) {
+                candidateContacts.find { it.role == "PATIENT" && it.isPrimaryPatient }
+                    ?: candidateContacts.find { it.role == "PATIENT" }
+                    ?: candidateContacts.firstOrNull()
+            } else {
+                candidateContacts.firstOrNull()
+            }
+        }
+    }
+
+    // Auto mark as read when contact is selected
+    LaunchedEffect(selectedContact?.userId, activeUser?.userId) {
+        val peerId = selectedContact?.userId
+        if (peerId != null) {
+            viewModel.markMessagesAsRead(peerId)
+        }
+    }
+
+    val conversationMessages = remember(messages, selectedContact?.userId, activeUser?.userId) {
+        val peerId = selectedContact?.userId
+        val myId = activeUser?.userId
+        if (peerId != null && myId != null) {
+            messages.filter {
+                (it.senderId == myId && it.receiverId == peerId) ||
+                (it.senderId == peerId && it.receiverId == myId)
+            }.sortedBy { it.timestamp }
+        } else {
+            messages.sortedBy { it.timestamp }
+        }
+    }
 
     var messageInput by remember { mutableStateOf("") }
-    var selectedDoctor by remember { mutableStateOf("Dr. Sarah Jenkins, MD") }
-    var selectedDoctorId by remember { mutableStateOf("doc_sarah_10") }
-    var showCipherInspector by remember { mutableStateOf(false) }
+    var showCallDropdown by remember { mutableStateOf(false) }
     var showAttachMenu by remember { mutableStateOf(false) }
     var attachedDocName by remember { mutableStateOf<String?>(null) }
     var attachedDocType by remember { mutableStateOf<String?>(null) }
 
-    val quickQuestions = listOf(
-        "Please review my latest vitals record.",
-        "Requesting medication refill approval.",
-        "Experiencing mild headache after morning routine.",
-        "Sharing my weekly exercise & mobility log."
-    )
+    val quickQuestions = remember(activeUser?.role) {
+        if (activeUser?.role in listOf("DOCTOR", "MEDICAL_PROFESSIONAL")) {
+            listOf(
+                "Please review the updated prescription directives.",
+                "How are your blood pressure readings today?",
+                "Scheduled clinical video follow-up for this week.",
+                "Lab results are within standard therapeutic ranges."
+            )
+        } else {
+            listOf(
+                "Please review my latest vitals record.",
+                "Requesting medication refill approval.",
+                "Experiencing mild headache after morning routine.",
+                "Sharing my weekly exercise & mobility log."
+            )
+        }
+    }
 
-    LaunchedEffect(sortedMessages.size) {
-        if (sortedMessages.isNotEmpty()) {
-            listState.animateScrollToItem(0)
+    LaunchedEffect(conversationMessages.size) {
+        if (conversationMessages.isNotEmpty()) {
+            listState.animateScrollToItem(conversationMessages.size - 1)
         }
     }
 
@@ -115,7 +196,7 @@ fun SecureMessagingScreen(
             .imePadding()
             .testTag("secure_messaging_screen")
     ) {
-        // E2EE Doctor Consultation Header Bar
+        // E2EE Consultation Header Bar with Contact Selector
         Surface(
             color = NavyPrimary,
             modifier = Modifier.fillMaxWidth()
@@ -126,75 +207,189 @@ fun SecureMessagingScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(SkyLight),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("SJ", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = NavyPrimary)
-                        }
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        Column {
-                            Text(
-                                text = selectedDoctor,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(HealthNormalGreen))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Online • Encrypted Consultation Channel", fontSize = 10.sp, color = Color(0xFF93C5FD))
-                            }
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0x3338BDF8),
-                        modifier = Modifier
-                            .clickable { showCipherInspector = !showCipherInspector }
-                            .testTag("cipher_inspector_toggle")
-                    ) {
+                    // Contact Info & Switcher
+                    Box {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showContactPicker = true }
+                                .padding(4.dp)
+                                .testTag("contact_selector_button")
                         ) {
-                            Icon(Icons.Default.Lock, contentDescription = null, tint = HealthNormalGreen, modifier = Modifier.size(12.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("AES-256", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SkyLight)
-                        }
-                    }
-                }
-
-                // Cipher Inspector Banner
-                AnimatedVisibility(visible = showCipherInspector) {
-                    Column(modifier = Modifier.padding(top = 8.dp)) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF0A192F),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x4D38BDF8)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(SkyLight),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
-                                    text = "🔒 END-TO-END ENCRYPTION ACTIVE",
-                                    fontSize = 9.sp,
+                                    text = selectedContact?.avatarInitials?.ifEmpty {
+                                        selectedContact?.name?.take(2)?.uppercase() ?: "MD"
+                                    } ?: "MD",
                                     fontWeight = FontWeight.Bold,
-                                    color = HealthNormalGreen
-                                )
-                                Text(
-                                    text = "Algorithm: AES-256-CBC • Key Exchange: ECDH 256 • HIPAA Compliant\nMessages and shared medical documents are encrypted before transmission.",
-                                    fontSize = 9.5.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Color(0xFFE2E8F0)
+                                    fontSize = 13.sp,
+                                    color = NavyPrimary
                                 )
                             }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = selectedContact?.name ?: "Dr. Sarah Jenkins, MD",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Switch Contact",
+                                        tint = SkyLight,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(HealthNormalGreen))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = when (selectedContact?.role) {
+                                            "PATIENT" -> "Patient • ID: ${selectedContact?.userId}"
+                                            "CAREGIVER" -> "Caregiver • ID: ${selectedContact?.userId}"
+                                            else -> "Doctor • ID: ${selectedContact?.userId ?: "1001"}"
+                                        },
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF93C5FD)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Contact Selection Dropdown Menu
+                        DropdownMenu(
+                            expanded = showContactPicker,
+                            onDismissRequest = { showContactPicker = false }
+                        ) {
+                            Text(
+                                text = "Select Conversation Peer",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                            candidateContacts.forEach { contact ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(contact.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text(
+                                                "${contact.role} • ID: ${contact.userId}",
+                                                fontSize = 11.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = when (contact.role) {
+                                                "PATIENT" -> Icons.Default.Person
+                                                "CAREGIVER" -> Icons.Default.MedicalServices
+                                                else -> Icons.Default.MedicalServices
+                                            },
+                                            contentDescription = null,
+                                            tint = TealAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        selectedContact = contact
+                                        showContactPicker = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Call Dropdown Button (Provides Video Call and Voice/Audio Call options)
+                    Box {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = TealAccent,
+                            modifier = Modifier
+                                .clickable { showCallDropdown = true }
+                                .testTag("chat_header_call_dropdown_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Call,
+                                    contentDescription = "Call Options",
+                                    tint = NavyDark,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Call",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NavyDark
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = NavyDark,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showCallDropdown,
+                            onDismissRequest = { showCallDropdown = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text("Video Call", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("Full-screen HD video consultation", fontSize = 10.5.sp, color = Color.Gray)
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Videocam, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(20.dp))
+                                },
+                                onClick = {
+                                    showCallDropdown = false
+                                    val target = selectedContact ?: candidateContacts.firstOrNull() ?: allAccounts.firstOrNull { it.userId != activeUser?.userId }
+                                    if (target != null) {
+                                        viewModel.initiateVideoCall(
+                                            recipient = target,
+                                            caseItem = galleryItems.firstOrNull()
+                                        )
+                                    }
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text("Voice Call", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("Clear encrypted audio consultation", fontSize = 10.5.sp, color = Color.Gray)
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Call, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(18.dp))
+                                },
+                                onClick = {
+                                    showCallDropdown = false
+                                    val target = selectedContact ?: candidateContacts.firstOrNull() ?: allAccounts.firstOrNull { it.userId != activeUser?.userId }
+                                    if (target != null) {
+                                        viewModel.initiateAudioCall(recipient = target)
+                                    }
+                                }
+                            )
                         }
                     }
                 }
@@ -202,21 +397,54 @@ fun SecureMessagingScreen(
         }
 
         // Messages List
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(sortedMessages, key = { it.id }) { msg ->
-                val isMe = msg.senderId == (activeUser?.userId ?: "pat_eleanor_01")
-                MessageBubble(msg = msg, isMe = isMe)
+        if (conversationMessages.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = SkyLight,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Encrypted Consultation Channel",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = NavyPrimary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Start a conversation with ${selectedContact?.name ?: "your healthcare provider"}. All clinical queries and records are end-to-end encrypted.",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(conversationMessages, key = { it.id }) { msg ->
+                    val isMe = msg.senderId == activeUser?.userId
+                    MessageBubble(msg = msg, isMe = isMe)
+                }
             }
         }
 
-        // Quick Medical Query Suggestions
+        // Quick Clinical Query Suggestions
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -334,6 +562,8 @@ fun SecureMessagingScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.width(4.dp))
+
                 OutlinedTextField(
                     value = messageInput,
                     onValueChange = { messageInput = it },
@@ -343,11 +573,13 @@ fun SecureMessagingScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
                         onSend = {
-                            if (messageInput.isNotBlank() || attachedDocName != null) {
+                            val targetPeer = selectedContact ?: candidateContacts.firstOrNull() ?: allAccounts.firstOrNull { it.userId != activeUser?.userId }
+                            if (targetPeer != null && (messageInput.isNotBlank() || attachedDocName != null)) {
+                                val text = messageInput.trim()
                                 viewModel.sendMessage(
-                                    peerId = selectedDoctorId,
-                                    peerName = selectedDoctor,
-                                    messageText = messageInput.ifEmpty { "Attached document for your review." },
+                                    peerId = targetPeer.userId,
+                                    peerName = targetPeer.name,
+                                    messageText = if (text.isNotEmpty()) text else "Attached document for your review.",
                                     attachmentName = attachedDocName,
                                     attachmentType = attachedDocType,
                                     attachmentSize = if (attachedDocName != null) "520 KB" else null
@@ -355,6 +587,9 @@ fun SecureMessagingScreen(
                                 messageInput = ""
                                 attachedDocName = null
                                 attachedDocType = null
+                                if (selectedContact == null) {
+                                    selectedContact = targetPeer
+                                }
                             }
                         }
                     ),
@@ -366,11 +601,13 @@ fun SecureMessagingScreen(
 
                 IconButton(
                     onClick = {
-                        if (messageInput.isNotBlank() || attachedDocName != null) {
+                        val targetPeer = selectedContact ?: candidateContacts.firstOrNull() ?: allAccounts.firstOrNull { it.userId != activeUser?.userId }
+                        if (targetPeer != null && (messageInput.isNotBlank() || attachedDocName != null)) {
+                            val text = messageInput.trim()
                             viewModel.sendMessage(
-                                peerId = selectedDoctorId,
-                                peerName = selectedDoctor,
-                                messageText = messageInput.ifEmpty { "Attached document for your review." },
+                                peerId = targetPeer.userId,
+                                peerName = targetPeer.name,
+                                messageText = if (text.isNotEmpty()) text else "Attached document for your review.",
                                 attachmentName = attachedDocName,
                                 attachmentType = attachedDocType,
                                 attachmentSize = if (attachedDocName != null) "520 KB" else null
@@ -378,17 +615,26 @@ fun SecureMessagingScreen(
                             messageInput = ""
                             attachedDocName = null
                             attachedDocType = null
+                            if (selectedContact == null) {
+                                selectedContact = targetPeer
+                            }
                         }
                     },
                     modifier = Modifier.testTag("send_message_button")
                 ) {
+                    val canSend = messageInput.isNotBlank() || attachedDocName != null
                     Surface(
                         shape = CircleShape,
-                        color = NavyPrimary,
+                        color = if (canSend) TealAccent else NavyPrimary,
                         modifier = Modifier.size(38.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(18.dp))
+                            Icon(
+                                imageVector = Icons.Default.Send,
+                                contentDescription = "Send",
+                                tint = if (canSend) NavyDark else Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }

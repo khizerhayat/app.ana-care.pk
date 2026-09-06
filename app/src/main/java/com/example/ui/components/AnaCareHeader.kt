@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -20,7 +21,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.LightMode
@@ -55,10 +57,29 @@ import com.example.ui.theme.NavySecondary
 import com.example.ui.theme.SkyLight
 import com.example.ui.theme.TealAccent
 
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import com.example.ui.viewmodel.CallType
+
 @Composable
 fun AnaCareHeader(
     activeAccount: UserAccountEntity? = null,
+    allAccounts: List<UserAccountEntity> = emptyList(),
     isDarkMode: Boolean = false,
+    isCloudConnected: Boolean = true,
     onToggleDarkMode: () -> Unit,
     onProfileClick: () -> Unit,
     onOpenAccountSwitcher: () -> Unit = {},

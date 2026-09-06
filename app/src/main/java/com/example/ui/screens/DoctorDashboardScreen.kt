@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SupervisedUserCircle
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -848,9 +849,9 @@ fun DoctorDashboardScreen(
                                                 }
                                             }
 
-                                            // Action Buttons: Open Chart, Message, Directives
+                                            // Action Buttons: Open Chart, Call, Message, Directives
                                             Row(
-                                                modifier = Modifier.width(280.dp),
+                                                modifier = Modifier.width(350.dp),
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
@@ -873,6 +874,22 @@ fun DoctorDashboardScreen(
                                                         fontWeight = FontWeight.Bold,
                                                         color = Color.White
                                                     )
+                                                }
+
+                                                // Video Call Button
+                                                Button(
+                                                    onClick = {
+                                                        viewModel.initiateVideoCall(recipient = pat)
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9333EA)),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    modifier = Modifier
+                                                        .height(28.dp)
+                                                        .testTag("call_button_${pat.userId}")
+                                                ) {
+                                                    Icon(Icons.Default.Videocam, contentDescription = "Call", tint = Color.White, modifier = Modifier.size(12.dp))
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text("Call", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                                 }
 
                                                 // Message Button
@@ -976,6 +993,21 @@ fun DoctorDashboardScreen(
                             }
 
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        viewModel.initiateVideoCall(recipient = patient)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9333EA)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.testTag("doctor_header_video_call_button")
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Videocam, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Video Consult", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+
                                 Button(
                                     onClick = {
                                         caregiverInstructionTargetPatient = patient

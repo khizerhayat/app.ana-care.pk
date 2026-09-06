@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import com.example.data.local.dao.AppConfigDao
 import com.example.data.local.dao.AppointmentDao
 import com.example.data.local.dao.AuditLogDao
+import com.example.data.local.dao.CallLogDao
 import com.example.data.local.dao.DailyActivityDao
 import com.example.data.local.dao.EncryptedMessageDao
 import com.example.data.local.dao.LabResultDao
@@ -19,6 +20,7 @@ import com.example.data.local.dao.VitalSignDao
 import com.example.data.local.entities.AppConfigEntity
 import com.example.data.local.entities.AppointmentEntity
 import com.example.data.local.entities.AuditLogEntity
+import com.example.data.local.entities.CallLogEntity
 import com.example.data.local.entities.DailyActivityEntity
 import com.example.data.local.entities.EncryptedMessageEntity
 import com.example.data.local.entities.LabResultEntity
@@ -39,12 +41,13 @@ import com.example.data.local.entities.VitalSignEntity
         LabResultEntity::class,
         AppointmentEntity::class,
         EncryptedMessageEntity::class,
+        CallLogEntity::class,
         PatientAlertNoteEntity::class,
         AppConfigEntity::class,
         MedicalGalleryEntity::class,
         AuditLogEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -56,6 +59,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun labResultDao(): LabResultDao
     abstract fun appointmentDao(): AppointmentDao
     abstract fun encryptedMessageDao(): EncryptedMessageDao
+    abstract fun callLogDao(): CallLogDao
     abstract fun patientAlertNoteDao(): PatientAlertNoteDao
     abstract fun appConfigDao(): AppConfigDao
     abstract fun medicalGalleryDao(): MedicalGalleryDao

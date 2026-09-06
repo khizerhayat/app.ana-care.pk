@@ -1106,6 +1106,40 @@ private fun SecurityAccessTabContent(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEFF6FF),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                        modifier = Modifier.fillMaxWidth().testTag("profile_cloud_sync_info_card")
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF10B981))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Real-Time Multi-Device Cloud Sync",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = NavyPrimary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Cross-device signaling is active. You can initiate video calls and exchange encrypted messages simultaneously across multiple phones, tablets, or browser sessions.",
+                                fontSize = 11.sp,
+                                color = Color(0xFF334155),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
                     OutlinedButton(
